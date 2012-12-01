@@ -49,7 +49,7 @@ struct n2n_sn
     sn_list_t           supernodes;
     comm_list_t         communities;
 #endif
-    struct peer_info *  edges;          /* Link list of registered edges. */
+    struct n2n_list     edges;          /* Link list of registered edges. */
 };
 
 typedef struct n2n_sn n2n_sn_t;
@@ -81,8 +81,8 @@ static int init_sn(n2n_sn_t *sss)
     sss->lport = N2N_SN_LPORT_DEFAULT;
     sss->sock = -1;
     sss->mgmt_sock = -1;
-    sss->edges = NULL;
-    
+    list_init(&sss->edges);
+
 #ifdef N2N_MULTIPLE_SUPERNODES
     sss->snm_discovery_state = N2N_SNM_STATE_DISCOVERY;
     sss->sn_sock = -1;
@@ -151,7 +151,7 @@ static int update_edge(n2n_sn_t *sss,
                macaddr_str(mac_buf, edgeMac),
                sock_to_cstr(sockbuf, sender_sock));
 
-    scan = find_peer_by_mac(sss->edges, edgeMac);
+    scan = find_peer_by_mac(&sss->edges, edgeMac);
 
     if (NULL == scan)
     {
@@ -164,8 +164,7 @@ static int update_edge(n2n_sn_t *sss,
         memcpy(&(scan->sock), sender_sock, sizeof(n2n_sock_t));
 
         /* insert this guy at the head of the edges list */
-        scan->next = sss->edges;     /* first in list */
-        sss->edges = scan;           /* head of list points to new scan */
+        list_add(&sss->edges, &scan->list);
 
         traceEvent(TRACE_INFO, "update_edge created   %s ==> %s",
                    macaddr_str(mac_buf, edgeMac),
@@ -248,7 +247,7 @@ static int try_forward(n2n_sn_t *sss,
     macstr_t            mac_buf;
     n2n_sock_str_t      sockbuf;
 
-    scan = find_peer_by_mac(sss->edges, dstMac);
+    scan = find_peer_by_mac(&sss->edges, dstMac);
 
     if (NULL != scan)
     {
@@ -301,8 +300,7 @@ static int try_broadcast(n2n_sn_t *sss,
 
     traceEvent(TRACE_DEBUG, "try_broadcast");
 
-    scan = sss->edges;
-    while(scan != NULL) 
+    N2N_LIST_FOR_EACH_ENTRY(scan, &sss->edges)
     {
         if ((0 == memcmp(scan->community_name, cmn->community, sizeof(n2n_community_t))) &&
             (0 != memcmp(srcMac, scan->mac_addr, sizeof(n2n_mac_t))))
@@ -330,9 +328,7 @@ static int try_broadcast(n2n_sn_t *sss,
                            macaddr_str(mac_buf, scan->mac_addr));
             }
         }
-
-        scan = scan->next;
-    } /* while */
+    } /* loop */
     
     return 0;
 }
@@ -358,7 +354,7 @@ static int process_mgmt(n2n_sn_t *sss,
 
     ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
                         "edges     %u\n",
-                        (unsigned int)peer_list_size(sss->edges));
+                        (unsigned int) list_size(&sss->edges));
 
     ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
                         "errors    %u\n",

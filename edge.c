@@ -118,8 +118,8 @@ struct n2n_edge
     n2n_trans_op_t      transop[N2N_MAX_TRANSFORMS]; /* one for each transform at fixed positions */
     size_t              tx_transop_idx;         /**< The transop to use when encoding. */
 
-    struct peer_info *  known_peers;            /**< Edges we are connected to. */
-    struct peer_info *  pending_peers;          /**< Edges we have tried to register with. */
+    struct n2n_list     known_peers;            /**< Edges we are connected to. */
+    struct n2n_list     pending_peers;          /**< Edges we have tried to register with. */
     time_t              last_register_req;      /**< Check if time to re-register with super*/
     size_t              register_lifetime;      /**< Time distance after last_register_req at which to re-register. */
     time_t              last_p2p;               /**< Last time p2p traffic was received. */
@@ -331,8 +331,8 @@ static int edge_init(n2n_edge_t *eee)
     eee->dyn_ip_mode         = 0;
     eee->allow_routing       = 0;
     eee->drop_multicast      = 1;
-    eee->known_peers         = NULL;
-    eee->pending_peers       = NULL;
+    list_init(&eee->known_peers);
+    list_init(&eee->pending_peers);
     eee->last_register_req   = 0;
     eee->register_lifetime   = REGISTER_SUPER_INTERVAL_DFL;
     eee->last_p2p            = 0;
@@ -497,8 +497,8 @@ static void edge_deinit(n2n_edge_t *eee)
         closesocket(eee->udp_mgmt_sock);
     }
 
-    clear_peer_list( &(eee->pending_peers) );
-    clear_peer_list( &(eee->known_peers) );
+    list_clear(&eee->pending_peers);
+    list_clear(&eee->known_peers);
 
     (eee->transop[N2N_TRANSOP_TF_IDX].deinit)(&eee->transop[N2N_TRANSOP_TF_IDX]);
     (eee->transop[N2N_TRANSOP_NULL_IDX].deinit)(&eee->transop[N2N_TRANSOP_NULL_IDX]);
@@ -763,7 +763,7 @@ void try_send_register(n2n_edge_t *eee,
                        const n2n_sock_t *peer)
 {
     /* REVISIT: purge of pending_peers not yet done. */
-    struct peer_info *scan = find_peer_by_mac(eee->pending_peers, mac);
+    struct peer_info *scan = find_peer_by_mac(&eee->pending_peers, mac);
     macstr_t mac_buf;
     n2n_sock_str_t sockbuf;
 
@@ -775,14 +775,14 @@ void try_send_register(n2n_edge_t *eee,
         scan->sock = *peer;
         scan->last_seen = time(NULL); /* Don't change this it marks the pending peer for removal. */
 
-        peer_list_add(&(eee->pending_peers), scan);
+        peer_list_add(&eee->pending_peers, scan);
 
         traceEvent(TRACE_DEBUG, "=== new pending %s -> %s",
                    macaddr_str(mac_buf, scan->mac_addr),
                    sock_to_cstr(sockbuf, &(scan->sock)));
 
         traceEvent(TRACE_INFO, "Pending peers list size=%u",
-                   (unsigned int) peer_list_size(eee->pending_peers));
+                   (unsigned int) list_size(&eee->pending_peers));
 
         /* trace Sending REGISTER */
 
@@ -802,7 +802,7 @@ void check_peer(n2n_edge_t *eee,
                 const n2n_mac_t mac,
                 const n2n_sock_t *peer)
 {
-    struct peer_info *scan = find_peer_by_mac(eee->known_peers, mac);
+    struct peer_info *scan = find_peer_by_mac(&eee->known_peers, mac);
 
     if (NULL == scan)
     {
@@ -836,9 +836,7 @@ void set_peer_operational(n2n_edge_t *eee,
                macaddr_str(mac_buf, mac),
                sock_to_cstr(sockbuf, peer));
 
-    scan=eee->pending_peers;
-
-    while ( NULL != scan )
+    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->pending_peers)
     {
         if (0 == memcmp(scan->mac_addr, mac, N2N_MAC_SIZE))
         {
@@ -846,26 +844,22 @@ void set_peer_operational(n2n_edge_t *eee,
         }
 
         prev = scan;
-        scan = scan->next;
     }
 
     if (scan)
     {
-
-
         /* Remove scan from pending_peers. */
         if (prev)
         {
-            prev->next = scan->next;
+            prev->list = scan->list;
         }
         else
         {
-            eee->pending_peers = scan->next;
+            eee->pending_peers = scan->list;
         }
 
         /* Add scan to known_peers. */
-        scan->next = eee->known_peers;
-        eee->known_peers = scan;
+        list_add(&eee->known_peers, &scan->list);
 
         scan->sock = *peer;
 
@@ -874,11 +868,10 @@ void set_peer_operational(n2n_edge_t *eee,
                    sock_to_cstr(sockbuf, &(scan->sock)));
 
         traceEvent(TRACE_INFO, "Pending peers list size=%u",
-                   (unsigned int) peer_list_size(eee->pending_peers));
+                   (unsigned int) list_size(&eee->pending_peers));
 
         traceEvent(TRACE_INFO, "Operational peers list size=%u",
-                   (unsigned int) peer_list_size(eee->known_peers));
-
+                   (unsigned int) list_size(&eee->known_peers));
 
         scan->last_seen = time(NULL);
     }
@@ -934,7 +927,7 @@ static void update_peer_address(n2n_edge_t *eee,
                                 const n2n_sock_t *peer,
                                 time_t when)
 {
-    struct peer_info *scan = eee->known_peers;
+    struct peer_info *scan = NULL;
     struct peer_info *prev = NULL; /* use to remove bad registrations. */
     n2n_sock_str_t sockbuf1;
     n2n_sock_str_t sockbuf2; /* don't clobber sockbuf1 if writing two addresses to trace */
@@ -952,8 +945,7 @@ static void update_peer_address(n2n_edge_t *eee,
         return;
     }
 
-
-    while(scan != NULL)
+    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->known_peers)
     {
         if (memcmp(mac, scan->mac_addr, N2N_MAC_SIZE) == 0)
         {
@@ -961,7 +953,6 @@ static void update_peer_address(n2n_edge_t *eee,
         }
 
         prev = scan;
-        scan = scan->next;
     }
 
     if (NULL == scan)
@@ -984,11 +975,11 @@ static void update_peer_address(n2n_edge_t *eee,
             if (NULL == prev)
             {
                 /* scan was head of list */
-                eee->known_peers = scan->next;
+                eee->known_peers = scan->list;
             }
             else
             {
-                prev->next = scan->next;
+                prev->list = scan->list;
             }
             free(scan);
 
@@ -1474,7 +1465,7 @@ static int find_peer_destination(n2n_edge_t *eee,
                                  n2n_mac_t mac_address,
                                  n2n_sock_t *destination)
 {
-    const struct peer_info *scan = eee->known_peers;
+    const struct peer_info *scan = NULL;
     macstr_t mac_buf;
     n2n_sock_str_t sockbuf;
     int retval = 0;
@@ -1483,7 +1474,8 @@ static int find_peer_destination(n2n_edge_t *eee,
                mac_address[0] & 0xFF, mac_address[1] & 0xFF, mac_address[2] & 0xFF,
                mac_address[3] & 0xFF, mac_address[4] & 0xFF, mac_address[5] & 0xFF);
 
-    while(scan != NULL) {
+    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->known_peers)
+    {
         traceEvent(TRACE_DEBUG, "Evaluating peer [MAC=%02X:%02X:%02X:%02X:%02X:%02X]",
                    scan->mac_addr[0] & 0xFF, scan->mac_addr[1] & 0xFF, scan->mac_addr[2] & 0xFF, 
                    scan->mac_addr[3] & 0xFF, scan->mac_addr[4] & 0xFF, scan->mac_addr[5] & 0xFF);
@@ -1495,7 +1487,6 @@ static int find_peer_destination(n2n_edge_t *eee,
             retval = 1;
             break;
         }
-        scan = scan->next;
     }
 
     if (0 == retval)
@@ -1965,8 +1956,8 @@ static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running)
 
     msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
                         "peers  pend:%u full:%u\n",
-                        (unsigned int) peer_list_size(eee->pending_peers),
-                        (unsigned int) peer_list_size(eee->known_peers));
+                        (unsigned int) list_size(&eee->pending_peers),
+                        (unsigned int) list_size(&eee->known_peers));
 
     msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
                         "last   super:%lu(%ld sec ago) p2p:%lu(%ld sec ago)\n",
@@ -2881,8 +2872,8 @@ static int run_loop(n2n_edge_t *eee)
         if (numPurged > 0)
         {
             traceEvent(TRACE_NORMAL, "Peer removed: pending=%u, operational=%u",
-                       (unsigned int) peer_list_size(eee->pending_peers),
-                       (unsigned int) peer_list_size(eee->known_peers));
+                       (unsigned int) list_size(&eee->pending_peers),
+                       (unsigned int) list_size(&eee->known_peers));
         }
 
         if (eee->dyn_ip_mode && 

@@ -123,6 +123,7 @@ typedef struct ether_hdr ether_hdr_t;
 #include "win32/wintap.h"
 #endif /* #ifdef WIN32 */
 
+#include "n2n_list.h"
 #include "n2n_wire.h"
 
 /* N2N_IFNAMSIZ is needed on win32 even if dev_name is not used after declaration */
@@ -167,7 +168,7 @@ typedef char ipstr_t[32];
 typedef char macstr_t[N2N_MACSTR_SIZE];
 
 struct peer_info {
-    struct peer_info *  next;
+    struct n2n_list     list;
     n2n_community_t     community_name;
     n2n_mac_t           mac_addr;
     n2n_sock_t          sock;
@@ -239,15 +240,13 @@ void print_n2n_version();
 
 
 /* Operations on peer_info lists. */
-struct peer_info * find_peer_by_mac( struct peer_info * list,
-                                     const n2n_mac_t mac );
-void   peer_list_add( struct peer_info * * list,
-                      struct peer_info * new );
-size_t peer_list_size( const struct peer_info * list );
-size_t purge_peer_list( struct peer_info ** peer_list, 
-                        time_t purge_before );
-size_t clear_peer_list( struct peer_info ** peer_list );
-size_t purge_expired_registrations( struct peer_info ** peer_list );
+struct peer_info *find_peer_by_mac(struct n2n_list *list,
+                                   const n2n_mac_t mac);
+void   peer_list_add(struct n2n_list *list,
+                     struct peer_info *new);
+size_t purge_peer_list(struct n2n_list *peer_list,
+                       time_t purge_before);
+size_t purge_expired_registrations(struct n2n_list *peer_list);
 
 /* version.c */
 extern char *n2n_sw_version, *n2n_sw_osName, *n2n_sw_buildDate;

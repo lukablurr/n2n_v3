@@ -273,35 +273,17 @@ void print_n2n_version()
  *
  *  @return NULL if not found; otherwise pointer to peer entry.
  */
-struct peer_info * find_peer_by_mac( struct peer_info * list, const n2n_mac_t mac )
+struct peer_info * find_peer_by_mac(struct n2n_list *list, const n2n_mac_t mac)
 {
-  while(list != NULL)
+    struct peer_info *peer = NULL;
+
+    N2N_LIST_FOR_EACH_ENTRY(peer, list)
     {
-      if( 0 == memcmp(mac, list->mac_addr, 6) )
-        {
-	  return list;
-        }
-      list = list->next;
+        if (0 == memcmp(mac, peer->mac_addr, 6))
+            return peer;
     }
 
-  return NULL;
-}
-
-
-/** Return the number of elements in the list.
- *
- */
-size_t peer_list_size( const struct peer_info * list )
-{
-  size_t retval=0;
-
-  while ( list )
-    {
-      ++retval;
-      list = list->next;
-    }
-
-  return retval;
+    return NULL;
 }
 
 /** Add new to the head of list. If list is NULL; create it.
@@ -309,96 +291,60 @@ size_t peer_list_size( const struct peer_info * list )
  *  The item new is added to the head of the list. New is modified during
  *  insertion. list takes ownership of new.
  */
-void peer_list_add( struct peer_info * * list,
-                    struct peer_info * new )
+void peer_list_add(struct n2n_list *list, struct peer_info *new)
 {
-  new->next = *list;
-  new->last_seen = time(NULL);
-  *list = new;
+    list_add(list, &new->list);
+    new->last_seen = time(NULL);
 }
 
 
-size_t purge_expired_registrations( struct peer_info ** peer_list ) {
-  static time_t last_purge = 0;
-  time_t now = time(NULL);
-  size_t num_reg = 0;
+size_t purge_expired_registrations(struct n2n_list *peer_list)
+{
+    static time_t last_purge = 0;
+    time_t now = time(NULL);
+    size_t num_reg = 0;
 
-  if((now - last_purge) < PURGE_REGISTRATION_FREQUENCY) return 0;
+    if ((now - last_purge) < PURGE_REGISTRATION_FREQUENCY)
+        return 0;
 
-  traceEvent(TRACE_INFO, "Purging old registrations");
+    traceEvent(TRACE_INFO, "Purging old registrations");
 
-  num_reg = purge_peer_list( peer_list, now-REGISTRATION_TIMEOUT );
+    num_reg = purge_peer_list(peer_list, now - REGISTRATION_TIMEOUT);
 
-  last_purge = now;
-  traceEvent(TRACE_INFO, "Remove %ld registrations", num_reg);
+    last_purge = now;
+    traceEvent(TRACE_INFO, "Remove %ld registrations", num_reg);
 
-  return num_reg;
+    return num_reg;
 }
 
 /** Purge old items from the peer_list and return the number of items that were removed. */
-size_t purge_peer_list( struct peer_info ** peer_list,
-                        time_t purge_before )
+size_t purge_peer_list(struct n2n_list *peer_list, time_t purge_before)
 {
-  struct peer_info *scan;
-  struct peer_info *prev;
-  size_t retval=0;
+    struct peer_info *scan = NULL;
+    struct peer_info *prev = NULL;
+    struct peer_info *next = NULL;
+    size_t retval = 0;
 
-  scan = *peer_list;
-  prev = NULL;
-  while(scan != NULL)
+    N2N_LIST_FOR_EACH_ENTRY_SAFE(scan, next, peer_list)
     {
-      if(scan->last_seen < purge_before)
+        if (scan->last_seen < purge_before)
         {
-	  struct peer_info *next = scan->next;
-
-	  if(prev == NULL)
+            if (prev == NULL)
             {
-	      *peer_list = next;
+                peer_list->next = &next->list;
             }
-	  else
+            else
             {
-	      prev->next = next;
+                prev->list.next = &next->list;
             }
 
-	  ++retval;
-	  free(scan);
-	  scan = next;
-        }
-      else
-        {
-	  prev = scan;
-	  scan = scan->next;
-        }
-    }
-
-  return retval;
-}
-
-/** Purge all items from the peer_list and return the number of items that were removed. */
-size_t clear_peer_list( struct peer_info ** peer_list )
-{
-    struct peer_info *scan;
-    struct peer_info *prev;
-    size_t retval=0;
-
-    scan = *peer_list;
-    prev = NULL;
-    while(scan != NULL)
-    {
-        struct peer_info *next = scan->next;
-
-        if(prev == NULL)
-        {
-            *peer_list = next;
+            ++retval;
+            free(scan);
         }
         else
         {
-            prev->next = next;
+            prev = scan;
         }
-
-        ++retval;
-        free(scan);
-        scan = next;
     }
 
     return retval;
