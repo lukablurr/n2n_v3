@@ -70,10 +70,10 @@
 #include <fcntl.h>
 
 #ifndef WIN32
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/param.h>
+//#include <unistd.h>
+//#include <sys/ioctl.h>
+//#include <sys/socket.h>
+//#include <sys/param.h>
 #include <pthread.h>
 
 #ifdef __linux__
@@ -89,15 +89,15 @@
 #include <syslog.h>
 #include <sys/wait.h>
 
-#define ETH_ADDR_LEN 6
+/*#define ETH_ADDR_LEN 6
 struct ether_hdr
 {
     uint8_t  dhost[ETH_ADDR_LEN];
     uint8_t  shost[ETH_ADDR_LEN];
-    uint16_t type;                /* higher layer protocol encapsulated */
-} __attribute__ ((__packed__));
+    uint16_t type;                 higher layer protocol encapsulated
+} __attribute__ ((__packed__));*/
 
-typedef struct ether_hdr ether_hdr_t;
+//typedef struct ether_hdr ether_hdr_t;
 
 #ifdef __sun__
 #include <sys/sysmacros.h> /* MIN() and MAX() declared here */
@@ -137,7 +137,6 @@ typedef struct tuntap_dev {
   char          dev_name[N2N_IFNAMSIZ];
 } tuntap_dev;
 
-#define SOCKET int
 #endif /* #ifndef WIN32 */
 
 #define QUICKLZ               1
@@ -158,14 +157,7 @@ typedef struct tuntap_dev {
  * same value if they are to understand each other. */
 #define N2N_COMPRESSION_ENABLED 1
 
-#define DEFAULT_MTU   1400
 
-/** Common type used to hold stringified IP addresses. */
-typedef char ipstr_t[32];
-
-/** Common type used to hold stringified MAC addresses. */
-#define N2N_MACSTR_SIZE 32
-typedef char macstr_t[N2N_MACSTR_SIZE];
 
 struct peer_info {
     struct n2n_list     list;
@@ -217,8 +209,6 @@ typedef struct n2n_edge         n2n_edge_t;
 /* extern TWOFISH *tf; */
 extern int traceLevel;
 extern int useSyslog;
-extern const uint8_t broadcast_addr[6];
-extern const uint8_t multicast_addr[6];
 
 /* Functions */
 extern void traceEvent(int eventTraceLevel, char *file, int line, char *format, ...);
@@ -229,19 +219,6 @@ extern int  tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len)
 extern void tuntap_close(struct tuntap_dev *tuntap);
 extern void tuntap_get_address(struct tuntap_dev *tuntap);
 
-extern SOCKET open_socket(int local_port, int bind_any);
-
-extern char *intoa(uint32_t addr, char *buf, uint16_t buf_len);
-extern char *macaddr_str(macstr_t buf, const n2n_mac_t mac);
-extern int   str2mac( uint8_t *outmac /* 6 bytes */, const char *s);
-extern char *sock_to_cstr(n2n_sock_str_t out,
-                          const n2n_sock_t *sock);
-extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out,
-                                  const n2n_sock_str_t str);
-extern int sock_equal(const n2n_sock_t *a,
-                      const n2n_sock_t *b);
-
-extern uint8_t is_multi_broadcast(const uint8_t *dest_mac);
 extern char *msg_type2str(uint16_t msg_type);
 extern void hexdump(const uint8_t *buf, size_t len);
 
@@ -256,12 +233,6 @@ void   peer_list_add(struct n2n_list *list,
 size_t purge_peer_list(struct n2n_list *peer_list,
                        time_t purge_before);
 size_t purge_expired_registrations(struct n2n_list *peer_list);
-
-
-ssize_t sendto_sock(int         sock_fd,
-                    const void *pktbuf,
-                    size_t      pktsize,
-                    const n2n_sock_t *dest);
 
 
 /* version.c */

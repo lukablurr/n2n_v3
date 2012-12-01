@@ -777,7 +777,7 @@ static int process_udp(n2n_sn_t *sss,
         sss->stats.last_fwd = now;
         decode_PACKET(&pkt, &cmn, udp_buf, &rem, &idx);
 
-        unicast = (0 == is_multi_broadcast(pkt.dstMac));
+        unicast = (0 == is_multi_broadcast_mac(pkt.dstMac));
 
         traceDebug("Rx PACKET (%s) %s -> %s %s",
                    (unicast ? "unicast" : "multicast"),
@@ -839,7 +839,7 @@ static int process_udp(n2n_sn_t *sss,
         sss->stats.last_fwd=now;
         decode_REGISTER( &reg, &cmn, udp_buf, &rem, &idx );
 
-        unicast = (0 == is_multi_broadcast(reg.dstMac));
+        unicast = (0 == is_multi_broadcast_mac(reg.dstMac));
 
         if (unicast)
         {

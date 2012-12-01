@@ -25,6 +25,7 @@
 
 #include "n2n.h"
 #include "n2n_transforms.h"
+#include "n2n_net.h"
 #include <assert.h>
 #include <sys/stat.h>
 #include "minilzo.h"
@@ -620,18 +621,14 @@ static void send_register_super(n2n_edge_t *eee,
     n2n_REGISTER_SUPER_t reg;
     n2n_sock_str_t sockbuf;
 
-    memset(&cmn, 0, sizeof(cmn));
-    memset(&reg, 0, sizeof(reg));
-    cmn.ttl = N2N_DEFAULT_TTL;
-    cmn.pc = n2n_register_super;
-    cmn.flags = 0;
-    memcpy(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE);
+    init_cmn(&cmn, n2n_register_super, 0, eee->community_name);
 
     for (idx = 0; idx < N2N_COOKIE_SIZE; ++idx)
     {
         eee->last_cookie[idx] = rand() % 0xff;
     }
 
+    memset(&reg, 0, sizeof(reg));
     memcpy(reg.cookie, eee->last_cookie, N2N_COOKIE_SIZE);
     reg.auth.scheme = 0; /* No auth yet */
 
@@ -689,7 +686,6 @@ static void send_deregister(n2n_edge_t *eee,
 }
 
 
-static int is_empty_ip_address(const n2n_sock_t *sock);
 static void update_peer_address(n2n_edge_t *eee,
                                 uint8_t from_supernode,
                                 const n2n_mac_t mac,
@@ -847,37 +843,6 @@ void set_peer_operational(n2n_edge_t *eee,
 }
 
 
-n2n_mac_t broadcast_mac = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-
-static int is_empty_ip_address(const n2n_sock_t *sock)
-{
-    const uint8_t *ptr = NULL;
-    size_t len = 0;
-    size_t i;
-
-    if (AF_INET6 == sock->family)
-    {
-        ptr = sock->addr.v6;
-        len = 16;
-    }
-    else
-    {
-        ptr = sock->addr.v4;
-        len = 4;
-    }
-
-    for (i = 0; i < len; ++i)
-    {
-        if (0 != ptr[i])
-        {
-            /* found a non-zero byte in address */
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
 
 /** Keep the known_peers list straight.
  *
@@ -904,7 +869,7 @@ static void update_peer_address(n2n_edge_t *eee,
         return;
     }
 
-    if (0 == memcmp(mac, broadcast_mac, N2N_MAC_SIZE))
+    if (is_broadcast_mac(mac))
     {
         /* Not to be registered. */
         return;
@@ -1614,51 +1579,6 @@ static void send_packet2net(n2n_edge_t *eee,
 }
 
 
-/** Destination MAC 33:33:0:00:00:00 - 33:33:FF:FF:FF:FF is reserved for IPv6
- *  neighbour discovery.
- */
-static int is_ip6_discovery(const void *buf, size_t bufsize)
-{
-    int retval = 0;
-
-    if (bufsize >= sizeof(ether_hdr_t))
-    {
-        /* copy to aligned memory */
-        ether_hdr_t eh;
-        memcpy(&eh, buf, sizeof(ether_hdr_t));
-
-        if ((0x33 == eh.dhost[0]) && 
-            (0x33 == eh.dhost[1]))
-        {
-            retval = 1; /* This is an IPv6 multicast packet [RFC2464]. */
-        }
-    }
-    return retval;
-}
-
-/** Destination 01:00:5E:00:00:00 - 01:00:5E:7F:FF:FF is multicast ethernet.
- */
-static int is_ethMulticast(const void *buf, size_t bufsize)
-{
-    int retval = 0;
-
-    /* Match 01:00:5E:00:00:00 - 01:00:5E:7F:FF:FF */
-    if (bufsize >= sizeof(ether_hdr_t))
-    {
-        /* copy to aligned memory */
-        ether_hdr_t eh;
-        memcpy(&eh, buf, sizeof(ether_hdr_t));
-
-        if ((0x01 == eh.dhost[0]) &&
-            (0x00 == eh.dhost[1]) &&
-            (0x5E == eh.dhost[2]) &&
-            (0 == (0x80 & eh.dhost[3])))
-        {
-            retval = 1; /* This is an ethernet multicast packet [RFC1112]. */
-        }
-    }
-    return retval;
-}
 
 
 
@@ -1686,8 +1606,9 @@ static void readFromTAPSocket(n2n_edge_t *eee)
             (signed int) len, macaddr_str(mac_buf, mac));
 
         if (eee->drop_multicast && 
-            (is_ip6_discovery(eth_pkt, len) ||
-             is_ethMulticast(eth_pkt, len)))
+            (is_ipv6_multicast_mac(eth_pkt) ||
+             is_broadcast_mac(eth_pkt)/* ||
+             is_ethMulticast(eth_pkt, len)*/))
         {
             traceDebug("Dropping multicast");
         }

@@ -23,19 +23,22 @@
 #include <sys/socket.h> /* AF_INET and AF_INET6 */
 #endif /* #if defined(WIN32) */
 
+
+#include "n2n_net.h"
+
+
+
 #define N2N_PKT_VERSION                 2
 #define N2N_DEFAULT_TTL                 2       /* can be forwarded twice at most */
 #define N2N_COMMUNITY_SIZE              16
-#define N2N_MAC_SIZE                    6
+#define N2N_MAC_SIZE                    ETH_ADDR_LEN
 #define N2N_COOKIE_SIZE                 4
 #define N2N_PKT_BUF_SIZE                2048
 #define N2N_SOCKBUF_SIZE                64      /* string representation of INET or INET6 sockets */
 
 typedef uint8_t n2n_community_t[N2N_COMMUNITY_SIZE];
-typedef uint8_t n2n_mac_t[N2N_MAC_SIZE];
 typedef uint8_t n2n_cookie_t[N2N_COOKIE_SIZE];
 
-typedef char    n2n_sock_str_t[N2N_SOCKBUF_SIZE];       /* tracing string buffer */
 
 enum n2n_pc
 {
@@ -77,18 +80,7 @@ typedef uint16_t n2n_flags_t;
 typedef uint16_t n2n_transform_t;       /* Encryption, compression type. */
 typedef uint32_t n2n_sa_t;              /* security association number */
 
-struct n2n_sock 
-{
-    uint8_t     family;         /* AF_INET or AF_INET6; or 0 if invalid */
-    uint16_t    port;           /* host order */
-    union
-    {
-        uint8_t v6[IPV6_SIZE];  /* byte sequence */
-        uint8_t v4[IPV4_SIZE];  /* byte sequence */
-    } addr;
-};
 
-typedef struct n2n_sock n2n_sock_t;
 
 struct n2n_auth
 {
