@@ -257,6 +257,13 @@ size_t purge_peer_list(struct n2n_list *peer_list,
                        time_t purge_before);
 size_t purge_expired_registrations(struct n2n_list *peer_list);
 
+
+ssize_t sendto_sock(int         sock_fd,
+                    const void *pktbuf,
+                    size_t      pktsize,
+                    const n2n_sock_t *dest);
+
+
 /* version.c */
 extern char *n2n_sw_version, *n2n_sw_osName, *n2n_sw_buildDate;
 

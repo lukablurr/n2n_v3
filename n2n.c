@@ -464,3 +464,57 @@ int sock_equal(const n2n_sock_t *a,
     return 0;
 }
 
+
+static int fill_sockaddr(struct sockaddr *out_addr, const n2n_sock_t *sock)
+{
+    if (AF_INET != sock->family)
+    {
+        /* AF_INET6 not implemented */
+        errno = EAFNOSUPPORT;
+        return -1;
+    }
+
+    struct sockaddr_in *si = (struct sockaddr_in *) out_addr;
+    si->sin_family = sock->family;
+    si->sin_port   = htons(sock->port);
+    memcpy(&si->sin_addr.s_addr, sock->addr.v4, IPV4_SIZE);
+    return 0;
+}
+
+/** Send a datagram to a socket defined by a n2n_sock_t.
+ *
+ *  @return -1 on error otherwise number of bytes sent
+ */
+ssize_t sendto_sock(int         sock_fd,
+                    const void *pktbuf,
+                    size_t      pktsize,
+                    const n2n_sock_t *dest)
+{
+    n2n_sock_str_t sockbuf;
+    struct sockaddr_in dst_addr;
+    ssize_t sent;
+
+    fill_sockaddr((struct sockaddr *) &dst_addr, dest);
+
+    traceDebug("sendto_sock %lu to [%s]", pktsize, sock_to_cstr(sockbuf, dest));//TODO to be removed
+
+    sent = sendto(sock_fd,
+                  pktbuf, pktsize,
+                  0/*flags*/,
+                  (const struct sockaddr *) &dst_addr,
+                  sizeof(struct sockaddr_in));
+
+    if (sent < 0)
+    {
+        char *c = strerror(errno);
+        traceError("sendto failed (%d) %s", errno, c);
+    }
+    else
+    {
+        traceDebug("sendto sent=%d", (signed int) sent);
+    }
+
+    return sent;
+}
+
+
