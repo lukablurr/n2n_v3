@@ -307,10 +307,6 @@ int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
                               size_t *rem,
                               size_t *idx);
 
-int fill_sockaddr(struct sockaddr *addr,
-                  size_t addrlen,
-                  const n2n_sock_t *sock);
-
 int encode_PACKET(uint8_t *base,
                   size_t *idx,
                   const n2n_common_t *common,
@@ -321,6 +317,11 @@ int decode_PACKET(n2n_PACKET_t *pkt,
                   const uint8_t *base,
                   size_t *rem,
                   size_t *idx);
+
+void init_cmn(n2n_common_t    *cmn,
+              n2n_pc_t         pc,
+              n2n_flags_t      flags,
+              n2n_community_t  community);
 
 
 #endif /* #if !defined( N2N_WIRE_H_ ) */

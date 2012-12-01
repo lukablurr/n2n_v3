@@ -417,28 +417,6 @@ int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
     return retval;
 }
 
-int fill_sockaddr(struct sockaddr *addr,
-                  size_t addrlen,
-                  const n2n_sock_t *sock)
-{
-    int retval = -1;
-
-    if (AF_INET == sock->family)
-    {
-        if (addrlen >= sizeof(struct sockaddr_in))
-        {
-            struct sockaddr_in *si = (struct sockaddr_in *) addr;
-            si->sin_family = sock->family;
-            si->sin_port = htons(sock->port);
-            memcpy(&(si->sin_addr.s_addr), sock->addr.v4, IPV4_SIZE);
-            retval = 0;
-        }
-    }
-
-    return retval;
-}
-
-
 int encode_PACKET(uint8_t *base,
                   size_t *idx,
                   const n2n_common_t *common,
@@ -477,5 +455,15 @@ int decode_PACKET(n2n_PACKET_t *pkt,
     retval += decode_uint16(&(pkt->transform), base, rem, idx);
 
     return retval;
+}
+
+
+void init_cmn(n2n_common_t *cmn, n2n_pc_t pc, n2n_flags_t flags, n2n_community_t community)
+{
+    memset(cmn, 0, sizeof(cmn));
+    cmn->ttl   = N2N_DEFAULT_TTL;
+    cmn->pc    = pc;
+    cmn->flags = flags;
+    memcpy(cmn->community, community, N2N_COMMUNITY_SIZE);
 }
 
