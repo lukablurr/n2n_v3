@@ -578,31 +578,6 @@ static void help()
 }
 
 
-/** Send a datagram to a socket defined by a n2n_sock_t */
-static ssize_t sendto_sock(int fd, const void *buf, size_t len, const n2n_sock_t *dest)
-{
-    struct sockaddr_in peer_addr;
-    ssize_t sent;
-
-    fill_sockaddr((struct sockaddr *) &peer_addr, 
-                  sizeof(peer_addr), 
-                  dest);
-
-    sent = sendto(fd, buf, len, 0/*flags*/,
-                  (struct sockaddr *) &peer_addr, sizeof(struct sockaddr_in));
-    if (sent < 0)
-    {
-        char *c = strerror(errno);
-        traceError("sendto failed (%d) %s", errno, c);
-    }
-    else
-    {
-        traceDebug("sendto sent=%d to ", (signed int) sent);
-    }
-
-    return sent;
-}
-
 
 /** Send a REGISTER packet to another edge. */
 static void send_register(n2n_edge_t *eee, 
@@ -615,12 +590,8 @@ static void send_register(n2n_edge_t *eee,
     n2n_REGISTER_t reg;
     n2n_sock_str_t sockbuf;
 
-    memset(&cmn, 0, sizeof(cmn));
+    init_cmn(&cmn, n2n_register, 0, eee->community_name);
     memset(&reg, 0, sizeof(reg));
-    cmn.ttl = N2N_DEFAULT_TTL;
-    cmn.pc = n2n_register;
-    cmn.flags = 0;
-    memcpy(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE);
 
     idx = 0;
     encode_uint32(reg.cookie, &idx, 123456789);
@@ -690,12 +661,7 @@ static void send_register_ack(n2n_edge_t            *eee,
     n2n_REGISTER_ACK_t ack;
     n2n_sock_str_t sockbuf;
 
-    memset(&cmn, 0, sizeof(cmn));
-    memset(&ack, 0, sizeof(reg));
-    cmn.ttl = N2N_DEFAULT_TTL;
-    cmn.pc = n2n_register_ack;
-    cmn.flags = 0;
-    memcpy(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE);
+    init_cmn(&cmn, n2n_register_ack, 0, eee->community_name);
 
     memset(&ack, 0, sizeof(ack));
     memcpy(ack.cookie, reg->cookie, N2N_COOKIE_SIZE);
@@ -705,8 +671,7 @@ static void send_register_ack(n2n_edge_t            *eee,
     idx = 0;
     encode_REGISTER_ACK(pktbuf, &idx, &cmn, &ack);
 
-    traceInfo("send REGISTER_ACK %s", 
-               sock_to_cstr(sockbuf, remote_peer));
+    traceInfo("send REGISTER_ACK %s", sock_to_cstr(sockbuf, remote_peer));
 
     sent = sendto_sock(eee->udp_sock, pktbuf, idx, remote_peer);
 }
@@ -1623,11 +1588,8 @@ static void send_packet2net(n2n_edge_t *eee,
 
     memcpy(destMac, tap_pkt, N2N_MAC_SIZE); /* dest MAC is first in ethernet header */
 
-    memset(&cmn, 0, sizeof(cmn));
-    cmn.ttl = N2N_DEFAULT_TTL;
-    cmn.pc = n2n_packet;
-    cmn.flags = 0; /* no options, not from supernode, no socket */
-    memcpy(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE);
+    /* no options, not from supernode, no socket */
+    init_cmn(&cmn, n2n_packet, 0, eee->community_name);
 
     memset(&pkt, 0, sizeof(pkt));
     memcpy(pkt.srcMac, eee->device.mac_addr, N2N_MAC_SIZE);

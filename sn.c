@@ -197,42 +197,6 @@ static int update_edge(n2n_sn_t *sss,
 }
 
 
-/** Send a datagram to the destination embodied in a n2n_sock_t.
- *
- *  @return -1 on error otherwise number of bytes sent
- */
-static ssize_t sendto_sock(/*n2n_sn_t * sss,*/
-                           int sock_fd,
-                           const n2n_sock_t *sock,
-                           const uint8_t *pktbuf,
-                           size_t pktsize)
-{
-    n2n_sock_str_t sockbuf;
-
-    if (AF_INET == sock->family)
-    {
-        struct sockaddr_in udpsock;
-
-        udpsock.sin_family = AF_INET;
-        udpsock.sin_port = htons(sock->port);
-        memcpy(&(udpsock.sin_addr.s_addr), &(sock->addr.v4), IPV4_SIZE);
-
-        traceDebug("sendto_sock %lu to [%s]",
-                   pktsize,
-                   sock_to_cstr(sockbuf, sock));
-
-        return sendto( /*sss->sock*/sock_fd, pktbuf, pktsize, 0,
-                      (const struct sockaddr *) &udpsock, sizeof(struct sockaddr_in));
-    }
-    else
-    {
-        /* AF_INET6 not implemented */
-        errno = EAFNOSUPPORT;
-        return -1;
-    }
-}
-
-
 
 /** Try to forward a message to a unicast MAC. If the MAC is unknown then
  *  broadcast to all edges in the destination community.
@@ -252,7 +216,7 @@ static int try_forward(n2n_sn_t *sss,
     if (NULL != scan)
     {
         int data_sent_len;
-        data_sent_len = sendto_sock(sss->sock, &(scan->sock), pktbuf, pktsize);
+        data_sent_len = sendto_sock(sss->sock, pktbuf, pktsize, &scan->sock);
 
         if (data_sent_len == pktsize)
         {
@@ -307,8 +271,7 @@ static int try_broadcast(n2n_sn_t *sss,
         /* REVISIT: exclude if the destination socket is where the packet came from. */
         {
             int data_sent_len;
-
-            data_sent_len = sendto_sock(sss->sock, &(scan->sock), pktbuf, pktsize);
+            data_sent_len = sendto_sock(sss->sock, pktbuf, pktsize, &scan->sock);
 
             if (data_sent_len != pktsize)
             {
@@ -938,10 +901,9 @@ static int process_udp(n2n_sn_t *sss,
         ++(sss->stats.reg_super);
         decode_REGISTER_SUPER(&reg, &cmn, udp_buf, &rem, &idx);
 
-        cmn2.ttl = N2N_DEFAULT_TTL;
-        cmn2.pc = n2n_register_super_ack;
-        cmn2.flags = N2N_FLAGS_SOCKET | N2N_FLAGS_FROM_SUPERNODE;
-        memcpy(cmn2.community, cmn.community, sizeof(n2n_community_t));
+        init_cmn(&cmn2, n2n_register_super_ack,
+                 N2N_FLAGS_SOCKET | N2N_FLAGS_FROM_SUPERNODE,
+                 cmn.community);
 
         memcpy(&(ack.cookie), &(reg.cookie), sizeof(n2n_cookie_t));
         memcpy(ack.edgeMac, reg.edgeMac, sizeof(n2n_mac_t));
