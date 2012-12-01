@@ -38,7 +38,7 @@ static void read_mac(char *ifname, n2n_mac_t mac_addr)
     else
         memcpy(mac_addr, ifr.ifr_ifru.ifru_hwaddr.sa_data, 6);
 
-    traceEvent(TRACE_NORMAL, "Interface %s has MAC %s",
+    traceNormal("Interface %s has MAC %s",
                ifname,
                macaddr_str(mac_addr_buf, mac_addr));
     close(_sock);
@@ -89,7 +89,7 @@ int tuntap_open(tuntap_dev *device,
 
     if (rc < 0)
     {
-        traceEvent(TRACE_ERROR, "ioctl() [%s][%d]\n", strerror(errno), rc);
+        traceError("ioctl() [%s][%d]\n", strerror(errno), rc);
         close(device->fd);
         return -1;
     }
@@ -103,7 +103,7 @@ int tuntap_open(tuntap_dev *device,
         snprintf(buf, sizeof(buf), "/sbin/ifconfig %s hw ether %s",
                  ifr.ifr_name, device_mac);
         system(buf);
-        traceEvent(TRACE_INFO, "Setting MAC: %s", buf);
+        traceInfo("Setting MAC: %s", buf);
     }
 
     if (0 == strncmp("dhcp", address_mode, 5))
@@ -118,7 +118,7 @@ int tuntap_open(tuntap_dev *device,
     }
 
     system(buf);
-    traceEvent(TRACE_INFO, "Bringing up: %s", buf);
+    traceInfo("Bringing up: %s", buf);
 
     device->ip_addr = inet_addr(device_ip);
     device->device_mask = inet_addr(device_mask);
@@ -165,7 +165,7 @@ void tuntap_get_address(struct tuntap_dev *tuntap)
         fclose(fp);
         fp = NULL;
 
-        traceEvent(TRACE_INFO, "ifconfig address = %s", buf);
+        traceInfo("ifconfig address = %s", buf);
 
         tuntap->ip_addr = inet_addr(buf);
     }

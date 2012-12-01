@@ -113,7 +113,7 @@ static int transop_encode_twofish(n2n_trans_op_t   *arg,
 
             sa = &(priv->sa[tx_sa_num]); /* Proper Tx SA index */
 
-            traceEvent(TRACE_DEBUG, "encode_twofish %lu with SA %lu.", in_len, sa->sa_id);
+            traceDebug("encode_twofish %lu with SA %lu.", in_len, sa->sa_id);
 
             /* Encode the twofish format version. */
             encode_uint8(outbuf, &idx, N2N_TWOFISH_TRANSFORM_VERSION);
@@ -139,17 +139,17 @@ static int transop_encode_twofish(n2n_trans_op_t   *arg,
             }
             else
             {
-                traceEvent(TRACE_ERROR, "encode_twofish encryption failed.");
+                traceError("encode_twofish encryption failed.");
             }
         }
         else
         {
-            traceEvent(TRACE_ERROR, "encode_twofish outbuf too small.");
+            traceError("encode_twofish outbuf too small.");
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "encode_twofish inbuf too big to encrypt.");
+        traceError("encode_twofish inbuf too big to encrypt.");
     }
 
     return len;
@@ -220,7 +220,7 @@ static int transop_decode_twofish(n2n_trans_op_t   *arg,
             {
                 sa_twofish_t *sa = &(priv->sa[sa_idx]);
 
-                traceEvent(TRACE_DEBUG, "decode_twofish %lu with SA %lu.", in_len, sa_rx, sa->sa_id);
+                traceDebug("decode_twofish %lu with SA %lu.", in_len, sa_rx, sa->sa_id);
 
                 len = TwoFishDecryptRaw((void *) (inbuf + TRANSOP_TF_VER_SIZE + TRANSOP_TF_SA_SIZE),
                                         assembly, /* destination */
@@ -238,14 +238,14 @@ static int transop_decode_twofish(n2n_trans_op_t   *arg,
                 }
                 else
                 {
-                    traceEvent(TRACE_ERROR, "decode_twofish decryption failed.");
+                    traceError("decode_twofish decryption failed.");
                 }
 
             }
             else
             {
                 /* Wrong security association; drop the packet as it is undecodable. */
-                traceEvent(TRACE_ERROR, "decode_twofish SA number %lu not found.", sa_rx);
+                traceError("decode_twofish SA number %lu not found.", sa_rx);
 
                 /* REVISIT: should be able to load a new SA at this point to complete the decoding. */
             }
@@ -253,14 +253,14 @@ static int transop_decode_twofish(n2n_trans_op_t   *arg,
         else
         {
             /* Wrong security association; drop the packet as it is undecodable. */
-            traceEvent(TRACE_ERROR, "decode_twofish unsupported twofish version %u.", tf_enc_ver);
+            traceError("decode_twofish unsupported twofish version %u.", tf_enc_ver);
 
             /* REVISIT: should be able to load a new SA at this point to complete the decoding. */
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "decode_twofish inbuf wrong size (%ul) to decrypt.", in_len);
+        traceError("decode_twofish inbuf wrong size (%ul) to decrypt.", in_len);
     }
 
     return len;
@@ -298,7 +298,7 @@ static int transop_addspec_twofish(n2n_trans_op_t *arg, const n2n_cipherspec_t *
                 priv->sa[priv->num_sa].enc_tf = TwoFishInit(keybuf, pstat);
                 priv->sa[priv->num_sa].dec_tf = TwoFishInit(keybuf, pstat);
 
-                traceEvent(TRACE_DEBUG, "transop_addspec_twofish sa_id=%u data=%s.\n",
+                traceDebug("transop_addspec_twofish sa_id=%u data=%s.\n",
                            priv->sa[priv->num_sa].sa_id, sep + 1);
 
                 ++(priv->num_sa);
@@ -307,12 +307,12 @@ static int transop_addspec_twofish(n2n_trans_op_t *arg, const n2n_cipherspec_t *
         }
         else
         {
-            traceEvent(TRACE_ERROR, "transop_addspec_twofish : bad key data - missing '_'.\n");
+            traceError("transop_addspec_twofish : bad key data - missing '_'.\n");
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "transop_addspec_twofish : full.\n");
+        traceError("transop_addspec_twofish : full.\n");
     }
     
     return retval;
@@ -328,7 +328,7 @@ static n2n_tostat_t transop_tick_twofish(n2n_trans_op_t *arg, time_t now)
 
     memset(&r, 0, sizeof(r));
 
-    traceEvent(TRACE_DEBUG, "transop_tf tick num_sa=%u", priv->num_sa);
+    traceDebug("transop_tf tick num_sa=%u", priv->num_sa);
 
     for (i = 0; i < priv->num_sa; ++i)
     {
@@ -336,21 +336,21 @@ static n2n_tostat_t transop_tick_twofish(n2n_trans_op_t *arg, time_t now)
         {
             time_t remaining = priv->sa[i].spec.valid_until - now;
 
-            traceEvent(TRACE_INFO, "transop_tf choosing tx_sa=%u (valid for %lu sec)", priv->sa[i].sa_id, remaining);
+            traceInfo("transop_tf choosing tx_sa=%u (valid for %lu sec)", priv->sa[i].sa_id, remaining);
             priv->tx_sa = i;
             found = 1;
             break;
         }
         else
         {
-            traceEvent(TRACE_DEBUG, "transop_tf tick rejecting sa=%u  %lu -> %lu",
+            traceDebug("transop_tf tick rejecting sa=%u  %lu -> %lu",
                        priv->sa[i].sa_id, priv->sa[i].spec.valid_from, priv->sa[i].spec.valid_until);
         }
     }
 
     if (0 == found)
     {
-        traceEvent(TRACE_INFO, "transop_tf no keys are currently valid. Keeping tx_sa=%u", priv->tx_sa);
+        traceInfo("transop_tf no keys are currently valid. Keeping tx_sa=%u", priv->tx_sa);
     }
     else
     {
@@ -421,13 +421,13 @@ int transop_twofish_setup(n2n_trans_op_t *ttt,
         }
         else
         {
-            traceEvent(TRACE_ERROR, "TwoFishInit failed");
+            traceError("TwoFishInit failed");
         }
     }
     else
     {
         memset(ttt, 0, sizeof(n2n_trans_op_t));
-        traceEvent(TRACE_ERROR, "Failed to allocate priv for twofish");
+        traceError("Failed to allocate priv for twofish");
     }
 
     return retval;
@@ -478,7 +478,7 @@ int transop_twofish_init(n2n_trans_op_t *ttt)
     else
     {
         memset(ttt, 0, sizeof(n2n_trans_op_t));
-        traceEvent(TRACE_ERROR, "Failed to allocate priv for twofish");
+        traceError("Failed to allocate priv for twofish");
     }
 
     return retval;

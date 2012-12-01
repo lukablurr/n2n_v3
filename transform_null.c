@@ -17,7 +17,7 @@ static int transop_encode_null(n2n_trans_op_t   *arg,
 {
     int retval = -1;
 
-    traceEvent(TRACE_DEBUG, "encode_null %lu", in_len);
+    traceDebug("encode_null %lu", in_len);
     if (out_len >= in_len)
     {
         memcpy(outbuf, inbuf, in_len);
@@ -25,7 +25,7 @@ static int transop_encode_null(n2n_trans_op_t   *arg,
     }
     else
     {
-        traceEvent(TRACE_DEBUG, "encode_null %lu too big for packet buffer", in_len);
+        traceDebug("encode_null %lu too big for packet buffer", in_len);
     }
 
     return retval;
@@ -39,7 +39,7 @@ static int transop_decode_null(n2n_trans_op_t   *arg,
 {
     int retval = -1;
 
-    traceEvent(TRACE_DEBUG, "decode_null %lu", in_len);
+    traceDebug("decode_null %lu", in_len);
     if (out_len >= in_len)
     {
         memcpy(outbuf, inbuf, in_len);
@@ -47,7 +47,7 @@ static int transop_decode_null(n2n_trans_op_t   *arg,
     }
     else
     {
-        traceEvent(TRACE_DEBUG, "decode_null %lu too big for packet buffer", in_len);
+        traceDebug("decode_null %lu too big for packet buffer", in_len);
     }
 
     return retval;

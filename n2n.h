@@ -189,6 +189,15 @@ typedef struct n2n_edge         n2n_edge_t;
 
 /* ************************************** */
 
+#define traceError(...)    traceEvent(TRACE_ERROR,   __VA_ARGS__)
+#define traceWarning(...)  traceEvent(TRACE_WARNING, __VA_ARGS__)
+#define traceNormal(...)   traceEvent(TRACE_NORMAL,  __VA_ARGS__)
+#define traceInfo(...)     traceEvent(TRACE_INFO,    __VA_ARGS__)
+#define traceDebug(...)    traceEvent(TRACE_DEBUG,   __VA_ARGS__)
+
+
+/* ************************************** */
+
 #define SUPERNODE_IP    "127.0.0.1"
 #define SUPERNODE_PORT  1234
 

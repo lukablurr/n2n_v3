@@ -53,7 +53,7 @@ int tuntap_open(tuntap_dev *device /* ignored */,
         {
             if (ioctl(device->fd, TAPGIFNAME, &req) == -1)
             {
-                traceEvent(TRACE_ERROR, "Unable to obtain name of tap device (%s)", strerror(errno));
+                traceError("Unable to obtain name of tap device (%s)", strerror(errno));
                 close(device->fd);
                 return (-1);
             }
@@ -66,7 +66,7 @@ int tuntap_open(tuntap_dev *device /* ignored */,
 
     if (device->fd < 0)
     {
-        traceEvent(TRACE_ERROR, "Unable to open tap device (%s)", strerror(errno));
+        traceError("Unable to open tap device (%s)", strerror(errno));
         return (-1);
     }
     else
@@ -74,7 +74,7 @@ int tuntap_open(tuntap_dev *device /* ignored */,
         char buf[256];
         FILE *fd;
 
-        traceEvent(TRACE_NORMAL, "Succesfully open %s", tap_device);
+        traceNormal("Succesfully open %s", tap_device);
 
         device->ip_addr = inet_addr(device_ip);
 
@@ -90,13 +90,13 @@ int tuntap_open(tuntap_dev *device /* ignored */,
                  tap_device, device_ip, device_mask, mtu);
         system(buf);
 
-        traceEvent(TRACE_NORMAL, "Interface %s up and running (%s/%s)",
+        traceNormal("Interface %s up and running (%s/%s)",
                    tap_device, device_ip, device_mask);
 
         /* Read MAC address */
 
         snprintf(buf, sizeof(buf), "ifconfig %s |grep address|cut -c 11-28", tap_device);
-        /* traceEvent(TRACE_INFO, "%s", buf); */
+        /* traceInfo("%s", buf); */
 
         fd = popen(buf, "r");
         if (fd < 0)
@@ -114,11 +114,11 @@ int tuntap_open(tuntap_dev *device /* ignored */,
 
             if (buf[0] == '\0')
             {
-                traceEvent(TRACE_ERROR, "Unable to read %s interface MAC address", tap_device);
+                traceError("Unable to read %s interface MAC address", tap_device);
                 exit(0);
             }
 
-            traceEvent(TRACE_NORMAL, "Interface %s mac %s", tap_device, buf);
+            traceNormal("Interface %s mac %s", tap_device, buf);
             if (sscanf(buf, "%02x:%02x:%02x:%02x:%02x:%02x", &a, &b, &c, &d, &e, &f) == 6)
             {
                 device->mac_addr[0] = a, device->mac_addr[1] = b;

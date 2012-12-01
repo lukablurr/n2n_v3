@@ -110,7 +110,7 @@ static ssize_t do_encode_packet(uint8_t *pktbuf,
 
     idx = 0;
     encode_PACKET(pktbuf, &idx, &cmn, &pkt);
-    traceEvent(TRACE_DEBUG, "encoded PACKET header of size=%u", (unsigned int) idx);
+    traceDebug("encoded PACKET header of size=%u", (unsigned int) idx);
 
     return idx;
 }

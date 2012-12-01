@@ -50,7 +50,7 @@ SOCKET open_socket(int local_port, int bind_any)
 
     if ((sock_fd = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
     {
-        traceEvent(TRACE_ERROR, "Unable to create socket [%s][%d]\n",
+        traceError("Unable to create socket [%s][%d]\n",
             strerror(errno), sock_fd);
         return (-1);
     }
@@ -67,7 +67,7 @@ SOCKET open_socket(int local_port, int bind_any)
     local_address.sin_addr.s_addr = htonl(bind_any ? INADDR_ANY : INADDR_LOOPBACK);
     if (bind(sock_fd, (struct sockaddr*) &local_address, sizeof(local_address)) == -1)
     {
-        traceEvent(TRACE_ERROR, "Bind error [%s]\n", strerror(errno));
+        traceError("Bind error [%s]\n", strerror(errno));
         return (-1);
     }
 
@@ -307,12 +307,12 @@ size_t purge_expired_registrations(struct n2n_list *peer_list)
     if ((now - last_purge) < PURGE_REGISTRATION_FREQUENCY)
         return 0;
 
-    traceEvent(TRACE_INFO, "Purging old registrations");
+    traceInfo("Purging old registrations");
 
     num_reg = purge_peer_list(peer_list, now - REGISTRATION_TIMEOUT);
 
     last_purge = now;
-    traceEvent(TRACE_INFO, "Remove %ld registrations", num_reg);
+    traceInfo("Remove %ld registrations", num_reg);
 
     return num_reg;
 }

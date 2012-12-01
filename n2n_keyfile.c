@@ -161,7 +161,7 @@ int n2n_read_keyfile(n2n_cipherspec_t *specs,    /* fill out this array of ciphe
     size_t    idx = 0;
     time_t    now = time(NULL);
 
-    traceEvent(TRACE_DEBUG, "Reading '%s'\n", ctrlfile_path);
+    traceDebug("Reading '%s'\n", ctrlfile_path);
 
     fp = fopen(ctrlfile_path, "r");
     if (fp)
@@ -182,7 +182,7 @@ int n2n_read_keyfile(n2n_cipherspec_t *specs,    /* fill out this array of ciphe
                 {
                     if (k->valid_until > now)
                     {
-                        traceEvent(TRACE_INFO, " --> [%u] from %lu, until %lu, transform=%hu, data=%s\n",
+                        traceInfo(" --> [%u] from %lu, until %lu, transform=%hu, data=%s\n",
                                    idx, k->valid_from, k->valid_until, k->t, k->opaque);
 
                         ++retval;
@@ -190,14 +190,14 @@ int n2n_read_keyfile(n2n_cipherspec_t *specs,    /* fill out this array of ciphe
                     }
                     else
                     {
-                        traceEvent(TRACE_INFO, " --X [%u] from %lu, until %lu, transform=%hu, data=%s\n",
+                        traceInfo(" --X [%u] from %lu, until %lu, transform=%hu, data=%s\n",
                                    idx, k->valid_from, k->valid_until, k->t, k->opaque);
 
                     }
                 }
                 else
                 {
-                    traceEvent(TRACE_WARNING, "Failed to decode line %u\n", lineNum);
+                    traceWarning("Failed to decode line %u\n", lineNum);
                 }
             }
 
@@ -214,7 +214,7 @@ int n2n_read_keyfile(n2n_cipherspec_t *specs,    /* fill out this array of ciphe
     }
     else
     {
-        traceEvent(TRACE_ERROR, "Failed to open '%s'\n", ctrlfile_path);
+        traceError("Failed to open '%s'\n", ctrlfile_path);
         retval = -1;
     }
 

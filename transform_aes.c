@@ -146,7 +146,7 @@ static int transop_encode_aes(n2n_trans_op_t  *arg,
 
             sa = &(priv->sa[tx_sa_num]); /* Proper Tx SA index */
         
-            traceEvent(TRACE_DEBUG, "encode_aes %lu with SA %lu.", in_len, sa->sa_id);
+            traceDebug("encode_aes %lu with SA %lu.", in_len, sa->sa_id);
 
             /* Encode the aes format version. */
             encode_uint8(outbuf, &idx, N2N_AES_TRANSFORM_VERSION);
@@ -167,7 +167,7 @@ static int transop_encode_aes(n2n_trans_op_t  *arg,
             /* Need at least one encrypted byte at the end for the padding. */
             len2 = ((len / AES_BLOCK_SIZE) + 1) * AES_BLOCK_SIZE; /* Round up to next whole AES adding at least one byte. */
             assembly[len2 - 1] = (len2 - len);
-            traceEvent(TRACE_DEBUG, "padding = %u", assembly[len2 - 1]);
+            traceDebug("padding = %u", assembly[len2 - 1]);
 
             memset(&(sa->enc_ivec), 0, sizeof(N2N_AES_IVEC_SIZE));
             AES_cbc_encrypt(assembly, /* source */
@@ -179,12 +179,12 @@ static int transop_encode_aes(n2n_trans_op_t  *arg,
         }
         else
         {
-            traceEvent(TRACE_ERROR, "encode_aes outbuf too small.");
+            traceError("encode_aes outbuf too small.");
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "encode_aes inbuf too big to encrypt.");
+        traceError("encode_aes inbuf too big to encrypt.");
     }
 
     return len2;
@@ -255,7 +255,7 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
             {
                 sa_aes_t *sa = &(priv->sa[sa_idx]);
 
-                traceEvent(TRACE_DEBUG, "decode_aes %lu with SA %lu.", in_len, sa_rx, sa->sa_id);
+                traceDebug("decode_aes %lu with SA %lu.", in_len, sa_rx, sa->sa_id);
 
                 len = (in_len - (TRANSOP_AES_VER_SIZE + TRANSOP_AES_SA_SIZE));
 
@@ -279,7 +279,7 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
                         /* strictly speaking for this to be an ethernet packet
                          * it is going to need to be even bigger; but this is
                          * enough to prevent segfaults. */
-                        traceEvent(TRACE_DEBUG, "padding = %u", padding);
+                        traceDebug("padding = %u", padding);
                         len -= padding;
 
                         len -= TRANSOP_AES_NONCE_SIZE; /* size of ethernet packet */
@@ -291,12 +291,12 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
                     }
                     else
                     {
-                        traceEvent(TRACE_WARNING, "UDP payload decryption failed.");
+                        traceWarning("UDP payload decryption failed.");
                     }
                 }
                 else
                 {
-                    traceEvent(TRACE_WARNING, "Encrypted length %d is not a multiple of AES_BLOCK_SIZE (%d)", len, AES_BLOCK_SIZE);
+                    traceWarning("Encrypted length %d is not a multiple of AES_BLOCK_SIZE (%d)", len, AES_BLOCK_SIZE);
                     len = 0;
                 }
 
@@ -304,7 +304,7 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
             else
             {
                 /* Wrong security association; drop the packet as it is undecodable. */
-                traceEvent(TRACE_ERROR, "decode_aes SA number %lu not found.", sa_rx);
+                traceError("decode_aes SA number %lu not found.", sa_rx);
 
                 /* REVISIT: should be able to load a new SA at this point to complete the decoding. */
             }
@@ -312,14 +312,14 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
         else
         {
             /* Wrong security association; drop the packet as it is undecodable. */
-            traceEvent(TRACE_ERROR, "decode_aes unsupported aes version %u.", aes_enc_ver);
+            traceError("decode_aes unsupported aes version %u.", aes_enc_ver);
 
             /* REVISIT: should be able to load a new SA at this point to complete the decoding. */
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "decode_aes inbuf wrong size (%ul) to decrypt.", in_len);
+        traceError("decode_aes inbuf wrong size (%ul) to decrypt.", in_len);
     }
 
     return len;
@@ -378,7 +378,7 @@ static int transop_addspec_aes(n2n_trans_op_t *arg, const n2n_cipherspec_t *cspe
                 AES_set_decrypt_key(keybuf, aes_keysize_bits, &(sa->dec_key));
                 /* Leave ivecs set to all zeroes */
                 
-                traceEvent(TRACE_DEBUG, "transop_addspec_aes sa_id=%u, %u bits data=%s.\n",
+                traceDebug("transop_addspec_aes sa_id=%u, %u bits data=%s.\n",
                            priv->sa[priv->num_sa].sa_id, aes_keysize_bits, sep + 1);
                 
                 ++(priv->num_sa);
@@ -387,12 +387,12 @@ static int transop_addspec_aes(n2n_trans_op_t *arg, const n2n_cipherspec_t *cspe
         }
         else
         {
-            traceEvent(TRACE_ERROR, "transop_addspec_aes : bad key data - missing '_'.\n");
+            traceError("transop_addspec_aes : bad key data - missing '_'.\n");
         }
     }
     else
     {
-        traceEvent(TRACE_ERROR, "transop_addspec_aes : full.\n");
+        traceError("transop_addspec_aes : full.\n");
     }
     
     return retval;
@@ -408,7 +408,7 @@ static n2n_tostat_t transop_tick_aes(n2n_trans_op_t *arg, time_t now)
 
     memset(&r, 0, sizeof(r));
 
-    traceEvent(TRACE_DEBUG, "transop_aes tick num_sa=%u now=%lu", priv->num_sa, now);
+    traceDebug("transop_aes tick num_sa=%u now=%lu", priv->num_sa, now);
 
     for (i = 0; i < priv->num_sa; ++i)
     {
@@ -416,21 +416,21 @@ static n2n_tostat_t transop_tick_aes(n2n_trans_op_t *arg, time_t now)
         {
             time_t remaining = priv->sa[i].spec.valid_until - now;
 
-            traceEvent(TRACE_INFO, "transop_aes choosing tx_sa=%u (valid for %lu sec)", priv->sa[i].sa_id, remaining);
+            traceInfo("transop_aes choosing tx_sa=%u (valid for %lu sec)", priv->sa[i].sa_id, remaining);
             priv->tx_sa = i;
             found = 1;
             break;
         }
         else
         {
-            traceEvent(TRACE_DEBUG, "transop_aes tick rejecting sa=%u  %lu -> %lu",
+            traceDebug("transop_aes tick rejecting sa=%u  %lu -> %lu",
                        priv->sa[i].sa_id, priv->sa[i].spec.valid_from, priv->sa[i].spec.valid_until);
         }
     }
 
     if (0 == found)
     {
-        traceEvent(TRACE_INFO, "transop_aes no keys are currently valid. Keeping tx_sa=%u", priv->tx_sa);
+        traceInfo("transop_aes no keys are currently valid. Keeping tx_sa=%u", priv->tx_sa);
     }
     else
     {
@@ -490,7 +490,7 @@ int transop_aes_init(n2n_trans_op_t *ttt)
     else
     {
         memset(ttt, 0, sizeof(n2n_trans_op_t));
-        traceEvent(TRACE_ERROR, "Failed to allocate priv for aes");
+        traceError("Failed to allocate priv for aes");
     }
 
     return retval;
@@ -540,7 +540,7 @@ static int transop_decode_aes(n2n_trans_op_t   *arg,
 
 static int transop_addspec_aes(n2n_trans_op_t *arg, const n2n_cipherspec_t *cspec)
 {
-    traceEvent(TRACE_DEBUG, "transop_addspec_aes AES not built into edge.\n");
+    traceDebug("transop_addspec_aes AES not built into edge.\n");
 
     return -1;
 }
@@ -586,7 +586,7 @@ int transop_aes_init(n2n_trans_op_t *ttt)
     else
     {
         memset(ttt, 0, sizeof(n2n_trans_op_t));
-        traceEvent(TRACE_ERROR, "Failed to allocate priv for aes");
+        traceError("Failed to allocate priv for aes");
     }
 
     return retval;

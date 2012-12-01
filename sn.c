@@ -147,7 +147,7 @@ static int update_edge(n2n_sn_t *sss,
     n2n_sock_str_t      sockbuf;
     struct peer_info   *scan;
 
-    traceEvent(TRACE_DEBUG, "update_edge for %s [%s]",
+    traceDebug("update_edge for %s [%s]",
                macaddr_str(mac_buf, edgeMac),
                sock_to_cstr(sockbuf, sender_sock));
 
@@ -166,7 +166,7 @@ static int update_edge(n2n_sn_t *sss,
         /* insert this guy at the head of the edges list */
         list_add(&sss->edges, &scan->list);
 
-        traceEvent(TRACE_INFO, "update_edge created   %s ==> %s",
+        traceInfo("update_edge created   %s ==> %s",
                    macaddr_str(mac_buf, edgeMac),
                    sock_to_cstr(sockbuf, sender_sock));
     }
@@ -179,13 +179,13 @@ static int update_edge(n2n_sn_t *sss,
             memcpy(scan->community_name, community, sizeof(n2n_community_t));
             memcpy(&(scan->sock), sender_sock, sizeof(n2n_sock_t));
 
-            traceEvent(TRACE_INFO, "update_edge updated   %s ==> %s",
+            traceInfo("update_edge updated   %s ==> %s",
                        macaddr_str(mac_buf, edgeMac),
                        sock_to_cstr(sockbuf, sender_sock));
         }
         else
         {
-            traceEvent(TRACE_DEBUG, "update_edge unchanged %s ==> %s",
+            traceDebug("update_edge unchanged %s ==> %s",
                        macaddr_str(mac_buf, edgeMac),
                        sock_to_cstr(sockbuf, sender_sock));
         }
@@ -217,7 +217,7 @@ static ssize_t sendto_sock(/*n2n_sn_t * sss,*/
         udpsock.sin_port = htons(sock->port);
         memcpy(&(udpsock.sin_addr.s_addr), &(sock->addr.v4), IPV4_SIZE);
 
-        traceEvent(TRACE_DEBUG, "sendto_sock %lu to [%s]",
+        traceDebug("sendto_sock %lu to [%s]",
                    pktsize,
                    sock_to_cstr(sockbuf, sock));
 
@@ -257,7 +257,7 @@ static int try_forward(n2n_sn_t *sss,
         if (data_sent_len == pktsize)
         {
             ++(sss->stats.fwd);
-            traceEvent(TRACE_DEBUG, "unicast %lu to [%s] %s",
+            traceDebug("unicast %lu to [%s] %s",
                        pktsize,
                        sock_to_cstr(sockbuf, &(scan->sock)),
                        macaddr_str(mac_buf, scan->mac_addr));
@@ -265,7 +265,7 @@ static int try_forward(n2n_sn_t *sss,
         else
         {
             ++(sss->stats.errors);
-            traceEvent(TRACE_ERROR, "unicast %lu to [%s] %s FAILED (%d: %s)",
+            traceError("unicast %lu to [%s] %s FAILED (%d: %s)",
                        pktsize,
                        sock_to_cstr(sockbuf, &(scan->sock)),
                        macaddr_str(mac_buf, scan->mac_addr),
@@ -274,7 +274,7 @@ static int try_forward(n2n_sn_t *sss,
     }
     else
     {
-        traceEvent(TRACE_DEBUG, "try_forward unknown MAC");
+        traceDebug("try_forward unknown MAC");
 
         /* Not a known MAC so drop. */
     }
@@ -298,7 +298,7 @@ static int try_broadcast(n2n_sn_t *sss,
     macstr_t            mac_buf;
     n2n_sock_str_t      sockbuf;
 
-    traceEvent(TRACE_DEBUG, "try_broadcast");
+    traceDebug("try_broadcast");
 
     N2N_LIST_FOR_EACH_ENTRY(scan, &sss->edges)
     {
@@ -313,7 +313,7 @@ static int try_broadcast(n2n_sn_t *sss,
             if (data_sent_len != pktsize)
             {
                 ++(sss->stats.errors);
-                traceEvent(TRACE_WARNING, "multicast %lu to [%s] %s failed %s",
+                traceWarning("multicast %lu to [%s] %s failed %s",
                            pktsize,
                            sock_to_cstr(sockbuf, &(scan->sock)),
                            macaddr_str(mac_buf, scan->mac_addr),
@@ -322,7 +322,7 @@ static int try_broadcast(n2n_sn_t *sss,
             else
             {
                 ++(sss->stats.broadcast);
-                traceEvent(TRACE_DEBUG, "multicast %lu to [%s] %s",
+                traceDebug("multicast %lu to [%s] %s",
                            pktsize,
                            sock_to_cstr(sockbuf, &(scan->sock)),
                            macaddr_str(mac_buf, scan->mac_addr));
@@ -344,7 +344,7 @@ static int process_mgmt(n2n_sn_t *sss,
     size_t ressize = 0;
     ssize_t r;
 
-    traceEvent(TRACE_DEBUG, "process_mgmt");
+    traceDebug("process_mgmt");
 
     ressize += snprintf(resbuf + ressize, N2N_SN_PKTBUF_SIZE - ressize,
                         "----------------\n");
@@ -391,7 +391,7 @@ static int process_mgmt(n2n_sn_t *sss,
     if (r <= 0)
     {
         ++(sss->stats.errors);
-        traceEvent(TRACE_ERROR, "process_mgmt : sendto failed. %s", strerror(errno));
+        traceError("process_mgmt : sendto failed. %s", strerror(errno));
     }
 
     return 0;
@@ -412,7 +412,7 @@ static int load_snm_info(n2n_sn_t *sss)
     if (read_supernodes_from_file( sss->supernodes.filename,
                                   &sss->supernodes.head))
     {
-        traceEvent(TRACE_ERROR, "Failed to open supernodes file. %s", strerror(errno));
+        traceError("Failed to open supernodes file. %s", strerror(errno));
         return -1;
     }
 
@@ -435,7 +435,7 @@ static int load_snm_info(n2n_sn_t *sss)
     if (read_communities_from_file( sss->communities.filename,
                                    &sss->communities.persist))
     {
-        traceEvent(TRACE_ERROR, "Failed to open communities file. %s", strerror(errno));
+        traceError("Failed to open communities file. %s", strerror(errno));
         return -1;
     }
 
@@ -547,7 +547,7 @@ static void send_snm_req(n2n_sn_t         *sss,
     idx = 0;
     encode_SNM_REQ(pktbuf, &idx, &hdr, &req);
 
-    traceEvent(TRACE_INFO, "send SNM_REQ to %s", sock_to_cstr(sockbuf, sn));
+    traceInfo("send SNM_REQ to %s", sock_to_cstr(sockbuf, sn));
 
     sendto_sock(sss->sn_sock, sn, pktbuf, idx);
 }
@@ -579,7 +579,7 @@ static void send_snm_rsp(n2n_sn_t *sss, const n2n_sock_t *sock, snm_hdr_t *hdr, 
     idx = 0;
     encode_SNM_INFO(pktbuf, &idx, &rsp_hdr, &rsp);
 
-    traceEvent(TRACE_INFO, "send SNM_RSP to %s", sock_to_cstr(sock_buf, sock));
+    traceInfo("send SNM_RSP to %s", sock_to_cstr(sock_buf, sock));
     log_SNM_INFO(&rsp);
 
     clear_snm_info(&rsp);
@@ -608,7 +608,7 @@ static void send_snm_adv(n2n_sn_t *sss, n2n_sock_t *sn, struct n2n_list *comm_li
     idx = 0;
     encode_SNM_ADV(pktbuf, &idx, &hdr, &adv);
 
-    traceEvent(TRACE_INFO, "send ADV to %s", sock_to_cstr(sockbuf, sn));
+    traceInfo("send ADV to %s", sock_to_cstr(sockbuf, sn));
     log_SNM_ADV(&adv);
 
     sendto_sock(sss->sn_sock, sn, pktbuf, idx);
@@ -627,7 +627,7 @@ static int process_sn_msg(n2n_sn_t *sss,
     n2n_sock_t          sender_sn;
 
 
-    traceEvent(TRACE_DEBUG, "process_sn_msg(%lu)", msg_size);
+    traceDebug("process_sn_msg(%lu)", msg_size);
 
     sn_cpy(&sender_sn, (const n2n_sock_t *) sender_sock);
     sender_sn.port = htons(sender_sn.port);
@@ -636,7 +636,7 @@ static int process_sn_msg(n2n_sn_t *sss,
     idx = 0; /* marches through packet header as parts are decoded. */
     if (decode_SNM_hdr(&hdr, msg_buf, &rem, &idx) < 0)
     {
-        traceEvent(TRACE_ERROR, "Failed to decode header");
+        traceError("Failed to decode header");
         return -1; /* failed to decode packet */
     }
     log_SNM_hdr(&hdr);
@@ -649,7 +649,7 @@ static int process_sn_msg(n2n_sn_t *sss,
 
         if (sss->snm_discovery_state != N2N_SNM_STATE_READY)
         {
-            traceEvent(TRACE_ERROR, "Received SNM REQ but supernode is NOT READY");
+            traceError("Received SNM REQ but supernode is NOT READY");
             return -1;
         }
         
@@ -668,7 +668,7 @@ static int process_sn_msg(n2n_sn_t *sss,
 
                 if (req.comm_num != 1)
                 {
-                    traceEvent(TRACE_ERROR, "Received SNM REQ from edge with comm_num=%d", req.comm_num);
+                    traceError("Received SNM REQ from edge with comm_num=%d", req.comm_num);
                     return -1;
                 }
 
@@ -703,7 +703,7 @@ static int process_sn_msg(n2n_sn_t *sss,
 
         if (sss->snm_discovery_state == N2N_SNM_STATE_READY)
         {
-            traceEvent(TRACE_ERROR, "Received SNM RSP but supernode is READY");
+            traceError("Received SNM RSP but supernode is READY");
             return -1;
         }
         
@@ -767,7 +767,7 @@ static int process_udp(n2n_sn_t *sss,
     n2n_sock_str_t      sockbuf;
 
 
-    traceEvent(TRACE_DEBUG, "process_udp(%lu)", udp_size);
+    traceDebug("process_udp(%lu)", udp_size);
 
     /* Use decode_common() to determine the kind of packet then process it:
      *
@@ -782,7 +782,7 @@ static int process_udp(n2n_sn_t *sss,
     idx = 0; /* marches through packet header as parts are decoded. */
     if (decode_common(&cmn, udp_buf, &rem, &idx) < 0)
     {
-        traceEvent(TRACE_ERROR, "Failed to decode common section");
+        traceError("Failed to decode common section");
         return -1; /* failed to decode packet */
     }
 
@@ -791,7 +791,7 @@ static int process_udp(n2n_sn_t *sss,
 
     if (cmn.ttl < 1)
     {
-        traceEvent(TRACE_WARNING, "Expired TTL");
+        traceWarning("Expired TTL");
         return 0; /* Don't process further */
     }
 
@@ -816,7 +816,7 @@ static int process_udp(n2n_sn_t *sss,
 
         unicast = (0 == is_multi_broadcast(pkt.dstMac));
 
-        traceEvent(TRACE_DEBUG, "Rx PACKET (%s) %s -> %s %s",
+        traceDebug("Rx PACKET (%s) %s -> %s %s",
                    (unicast ? "unicast" : "multicast"),
                    macaddr_str(mac_buf, pkt.srcMac),
                    macaddr_str(mac_buf2, pkt.dstMac),
@@ -846,7 +846,7 @@ static int process_udp(n2n_sn_t *sss,
             /* Already from a supernode. Nothing to modify, just pass to
              * destination. */
 
-            traceEvent(TRACE_DEBUG, "Rx PACKET fwd unmodified");
+            traceDebug("Rx PACKET fwd unmodified");
 
             rec_buf = udp_buf;
             encx = udp_size;
@@ -880,7 +880,7 @@ static int process_udp(n2n_sn_t *sss,
 
         if (unicast)
         {
-            traceEvent(TRACE_DEBUG, "Rx REGISTER %s -> %s %s",
+            traceDebug("Rx REGISTER %s -> %s %s",
                        macaddr_str(mac_buf, reg.srcMac),
                        macaddr_str(mac_buf2, reg.dstMac),
                        ((cmn.flags & N2N_FLAGS_FROM_SUPERNODE) ? "from sn" : "local"));
@@ -917,12 +917,12 @@ static int process_udp(n2n_sn_t *sss,
         }
         else
         {
-            traceEvent(TRACE_ERROR, "Rx REGISTER with multicast destination");
+            traceError("Rx REGISTER with multicast destination");
         }
     }
     else if (msg_type == MSG_TYPE_REGISTER_ACK)
     {
-        traceEvent(TRACE_DEBUG, "Rx REGISTER_ACK (NOT IMPLEMENTED) SHould not be via supernode");
+        traceDebug("Rx REGISTER_ACK (NOT IMPLEMENTED) SHould not be via supernode");
     }
     else if (msg_type == MSG_TYPE_REGISTER_SUPER)
     {
@@ -954,7 +954,7 @@ static int process_udp(n2n_sn_t *sss,
         ack.num_sn = 0; /* No backup */
         memset(&(ack.sn_bak), 0, sizeof(n2n_sock_t));
 
-        traceEvent(TRACE_DEBUG, "Rx REGISTER_SUPER for %s [%s]",
+        traceDebug("Rx REGISTER_SUPER for %s [%s]",
                    macaddr_str(mac_buf, reg.edgeMac),
                    sock_to_cstr(sockbuf, &(ack.sock)));
 
@@ -977,7 +977,7 @@ static int process_udp(n2n_sn_t *sss,
         sendto(sss->sock, ackbuf, encx, 0,
                (struct sockaddr *) sender_sock, sizeof(struct sockaddr_in));
 
-        traceEvent(TRACE_DEBUG, "Tx REGISTER_SUPER_ACK for %s [%s]",
+        traceDebug("Tx REGISTER_SUPER_ACK for %s [%s]",
                    macaddr_str(mac_buf, reg.edgeMac),
                    sock_to_cstr(sockbuf, &(ack.sock)));
 
@@ -1078,57 +1078,57 @@ int main(int argc, char * const argv[])
         useSyslog = 1; /* traceEvent output now goes to syslog. */
         if (-1 == daemon(0, 0))
         {
-            traceEvent(TRACE_ERROR, "Failed to become daemon.");
+            traceError("Failed to become daemon.");
             exit(-5);
         }
     }
 #endif /* #if defined(N2N_HAVE_DAEMON) */
 
-    traceEvent(TRACE_DEBUG, "traceLevel is %d", traceLevel);
+    traceDebug("traceLevel is %d", traceLevel);
 
     sss.sock = open_socket(sss.lport, 1 /*bind ANY*/);
     if (-1 == sss.sock)
     {
-        traceEvent(TRACE_ERROR, "Failed to open main socket. %s", strerror(errno));
+        traceError("Failed to open main socket. %s", strerror(errno));
         exit(-2);
     }
     else
     {
-        traceEvent(TRACE_NORMAL, "supernode is listening on UDP %u (main)", sss.lport);
+        traceNormal("supernode is listening on UDP %u (main)", sss.lport);
     }
 
     sss.mgmt_sock = open_socket(N2N_SN_MGMT_PORT, 0 /* bind LOOPBACK */);
     if (-1 == sss.mgmt_sock)
     {
-        traceEvent(TRACE_ERROR, "Failed to open management socket. %s", strerror(errno));
+        traceError("Failed to open management socket. %s", strerror(errno));
         exit(-2);
     }
     else
     {
-        traceEvent(TRACE_NORMAL, "supernode is listening on UDP %u (management)", N2N_SN_MGMT_PORT);
+        traceNormal("supernode is listening on UDP %u (management)", N2N_SN_MGMT_PORT);
     }
 
 #ifdef N2N_MULTIPLE_SUPERNODES
     if (load_snm_info(&sss))
     {
-        traceEvent(TRACE_ERROR, "Failed to load SNM information. %s", strerror(errno));
+        traceError("Failed to load SNM information. %s", strerror(errno));
         exit(-2);
     }
 
     sss.sn_sock = open_socket(sss.sn_port, 1 /* bind ANY */ );
     if (-1 == sss.sn_sock)
     {
-        traceEvent(TRACE_ERROR, "Failed to open supernodes communication socket. %s", strerror(errno));
+        traceError("Failed to open supernodes communication socket. %s", strerror(errno));
         exit(-2);
     }
 
-    traceEvent(TRACE_NORMAL, "supernode is listening on UDP %u (supernodes communication)", sss.sn_port);
+    traceNormal("supernode is listening on UDP %u (supernodes communication)", sss.sn_port);
 
     send_req_to_all_supernodes(&sss, (sss.snm_discovery_state != N2N_SNM_STATE_READY), NULL, 0);
 
 #endif /* #ifdef N2N_MULTIPLE_SUPERNODES */
 
-    traceEvent(TRACE_NORMAL, "supernode started");
+    traceNormal("supernode started");
 
     return run_loop(&sss);
 }
@@ -1188,7 +1188,7 @@ static int run_loop(n2n_sn_t *sss)
 
                 if (bread <= 0)
                 {
-                    traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
+                    traceError("recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
                     keep_running = 0;
                     break;
                 }
@@ -1210,7 +1210,7 @@ static int run_loop(n2n_sn_t *sss)
                 if (bread < 0) /* For UDP bread of zero just means no data (unlike TCP). */
                 {
                     /* The fd is no good now. Maybe we lost our interface. */
-                    traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
+                    traceError("recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
                     keep_running = 0;
                     break;
                 }
@@ -1234,7 +1234,7 @@ static int run_loop(n2n_sn_t *sss)
 
                 if (bread <= 0)
                 {
-                    traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
+                    traceError("recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
                     keep_running = 0;
                     break;
                 }
@@ -1245,7 +1245,7 @@ static int run_loop(n2n_sn_t *sss)
         }
         else
         {
-            traceEvent(TRACE_DEBUG, "timeout");
+            traceDebug("timeout");
         }
 
         purge_expired_registrations(&(sss->edges));

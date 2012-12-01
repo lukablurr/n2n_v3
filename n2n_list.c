@@ -180,12 +180,12 @@ int read_list_from_file(const char *filename, struct n2n_list *list, read_entry_
 {
     FILE *f = NULL;
 
-    traceEvent(TRACE_INFO, "opening file %s for reading", filename);
+    traceInfo("opening file %s for reading", filename);
 
     f = open_list_file_for_read(filename);
     if (!f)
     {
-        traceEvent(TRACE_ERROR, "couldn't open file. %s", strerror(errno));
+        traceError("couldn't open file. %s", strerror(errno));
         return -1;
     }
 
@@ -214,7 +214,7 @@ int write_list_to_file(const char *filename, struct n2n_list *list, write_entry_
     FILE *f = fopen(filename, "w");
     if (!f)
     {
-        traceEvent(TRACE_ERROR, "couldn't open community file");
+        traceError("couldn't open community file");
         return -1;
     }
 

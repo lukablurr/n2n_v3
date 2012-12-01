@@ -113,7 +113,7 @@ static size_t generate_random_list(struct n2n_list *list,
                                    struct list_ops *ops)
 {
     int i = 0, size = random() % 100;
-    traceEvent(TRACE_NORMAL, "Generating %d list items\n", size);
+    traceNormal("Generating %d list items\n", size);
 
     for (i = 0; i < size; i++)
     {
@@ -269,7 +269,7 @@ static int test_SNM_MSG(struct SNM_msg_ops *ops,
 
     if (ops->enc(buf, &idx, hdr, msg) != idx)
     {
-        traceEvent(TRACE_ERROR, "Error encoding message");
+        traceError("Error encoding message");
         return -1;
     }
 
@@ -279,7 +279,7 @@ static int test_SNM_MSG(struct SNM_msg_ops *ops,
     idx = 0;
     if (decode_SNM_hdr(&new_hdr, buf, &rem, &idx) < 0)
     {
-        traceEvent(TRACE_ERROR, "Failed to decode header");
+        traceError("Failed to decode header");
         goto test_SNM_MSG_err;
     }
 
@@ -287,12 +287,12 @@ static int test_SNM_MSG(struct SNM_msg_ops *ops,
 
     if (ops->dec(new_msg, &new_hdr, buf, &rem, &idx) < 0)
     {
-        traceEvent(TRACE_ERROR, "Error decoding message");
+        traceError("Error decoding message");
         goto test_SNM_MSG_err;
     }
     if (ops->cmp(msg, new_msg))
     {
-        traceEvent(TRACE_ERROR, "Mismatched messages");
+        traceError("Mismatched messages");
         goto test_SNM_MSG_err;
     }
 
@@ -329,7 +329,7 @@ static void test_REQ_LIST()
     size_t         lst_size = 0;
     struct n2n_list communities = { NULL };
 
-    traceEvent(TRACE_NORMAL, "---- Testing SNM REQUEST message");
+    traceNormal("---- Testing SNM REQUEST message");
 
     SET_N(hdr.flags);
 
@@ -353,13 +353,13 @@ static void test_REQ_LIST()
 
     if (test_SNM_MSG(&SNM_REQ_ops, &hdr, &req, size))
     {
-        traceEvent(TRACE_ERROR, "Error testing n2n_SNM_REQ_t");
+        traceError("Error testing n2n_SNM_REQ_t");
     }
 
     free_communities(&req.comm_ptr);
     list_clear(&communities);
 
-    traceEvent(TRACE_NORMAL, "---- End testing SNM REQUEST message");
+    traceNormal("---- End testing SNM REQUEST message");
 }
 
 static int sn_cmp_timestamp_asc(const void *l, const void *r)
@@ -386,15 +386,15 @@ static void test_sn_sort(struct n2n_list *list)
     {
         if (sni->timestamp < prev_timestamp)
         {
-            traceEvent(TRACE_ERROR, "Sort testing failed");
+            traceError("Sort testing failed");
             return;
         }
 
-        //traceEvent(TRACE_NORMAL, "--- %d", sni->last_seen);
+        //traceNormal("--- %d", sni->last_seen);
         prev_timestamp = sni->timestamp;
     }
 
-    traceEvent(TRACE_NORMAL, "--- Sort testing succeeded");
+    traceNormal("--- Sort testing succeeded");
 }
 
 static void test_INFO()
@@ -405,7 +405,7 @@ static void test_INFO()
     n2n_SNM_INFO_t rsp;
     size_t         size = 0;
 
-    traceEvent(TRACE_NORMAL, "---- Testing SNM INFO message");
+    traceNormal("---- Testing SNM INFO message");
 
     SET_S(req_hdr.flags);
     SET_C(req_hdr.flags);
@@ -428,12 +428,12 @@ static void test_INFO()
 
     if (test_SNM_MSG(&SNM_INFO_ops, &req_hdr, &rsp, size))
     {
-        traceEvent(TRACE_ERROR, "Error testing n2n_SNM_INFO_t");
+        traceError("Error testing n2n_SNM_INFO_t");
     }
 
     clear_snm_info(&rsp);
 
-    traceEvent(TRACE_NORMAL, "---- End testing SNM INFO message");
+    traceNormal("---- End testing SNM INFO message");
 }
 
 static void test_ADV()
@@ -444,7 +444,7 @@ static void test_ADV()
 
     comm_list_t communities = { {NULL}, {NULL}, {0} };
 
-    traceEvent(TRACE_NORMAL, "---- Testing SNM ADV message");
+    traceNormal("---- Testing SNM ADV message");
 
     SET_N(hdr.flags);
 
@@ -456,10 +456,10 @@ static void test_ADV()
 
     if (test_SNM_MSG(&SNM_ADV_ops, &hdr, &adv, size))
     {
-        traceEvent(TRACE_ERROR, "Error testing n2n_SNM_ADV_t");
+        traceError("Error testing n2n_SNM_ADV_t");
     }
 
-    traceEvent(TRACE_NORMAL, "---- End testing SNM ADV message");
+    traceNormal("---- End testing SNM ADV message");
 }
 
 /*
@@ -475,12 +475,12 @@ static int test_write_read_list(struct n2n_list  *list,
 
     if (write_list_to_file(filename, list, ops->write_entry))
     {
-        traceEvent(TRACE_ERROR, "Error writing list");
+        traceError("Error writing list");
         goto out_err;
     }
     if (read_list_from_file(filename, &new_list, ops->read_entry))
     {
-        traceEvent(TRACE_ERROR, "Error reading list");
+        traceError("Error reading list");
         goto out_err;
     }
 
@@ -489,7 +489,7 @@ static int test_write_read_list(struct n2n_list  *list,
 
     if (size != new_size)
     {
-        traceEvent(TRACE_ERROR, "Mismatched list sizes: %d instead of %d", new_size, size);
+        traceError("Mismatched list sizes: %d instead of %d", new_size, size);
         goto out_err;
     }
 
@@ -504,7 +504,7 @@ static int test_write_read_list(struct n2n_list  *list,
 
         if (memcmp(ITEM_DATA(old_entry), ITEM_DATA(new_entry), ops->item_size - HDR_SIZE))
         {
-            traceEvent(TRACE_ERROR, "Mismatched item %d", i);
+            traceError("Mismatched item %d", i);
             goto out_err;
         }
 
@@ -514,7 +514,7 @@ static int test_write_read_list(struct n2n_list  *list,
 
     if (list_clear(&new_list) != size)
     {
-        traceEvent(TRACE_ERROR, "Error clearing list");
+        traceError("Error clearing list");
         goto out_err;
     }
 
@@ -533,31 +533,31 @@ static void test_list(struct list_ops *ops)
 
     if (list_size(&list) != size)
     {
-        traceEvent(TRACE_ERROR, "Mismatched list size");
+        traceError("Mismatched list size");
         return;
     }
     if (test_write_read_list(&list, ops))
     {
-        traceEvent(TRACE_ERROR, "Error write/read test");
+        traceError("Error write/read test");
     }
     if (list_clear(&list) != size)
     {
-        traceEvent(TRACE_ERROR, "Error clearing list");
+        traceError("Error clearing list");
     }
 }
 
 static void test_sn()
 {
-    traceEvent(TRACE_NORMAL, "--- Testing supernodes lists IO");
+    traceNormal("--- Testing supernodes lists IO");
     test_list(&sn_list_ops);
-    traceEvent(TRACE_NORMAL, "--- End testing supernodes lists IO");
+    traceNormal("--- End testing supernodes lists IO");
 }
 
 static void test_comm()
 {
-    traceEvent(TRACE_NORMAL, "--- Testing community lists IO");
+    traceNormal("--- Testing community lists IO");
     test_list(&comm_list_ops);
-    traceEvent(TRACE_NORMAL, "--- End testing community lists IO");
+    traceNormal("--- End testing community lists IO");
 }
 
 int main()

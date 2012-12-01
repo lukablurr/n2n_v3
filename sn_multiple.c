@@ -30,7 +30,7 @@ struct n2n_list *read_sn(FILE *f)
     sni = calloc(1, sizeof(struct sn_info));
     if (!sni)
     {
-        traceEvent(TRACE_ERROR, "couldn't allocate a new supernode entry");
+        traceError("couldn't allocate a new supernode entry");
         return NULL;
     }
 
@@ -39,7 +39,7 @@ struct n2n_list *read_sn(FILE *f)
 
     if (sn_list_add_new(list, &sn, NULL) < 0)
     {
-        traceEvent(TRACE_ERROR, "couldn't add read supernode");
+        traceError("couldn't add read supernode");
         goto out_err;
     }
 */
@@ -53,7 +53,7 @@ void write_sn(FILE *f, const void *entry)
 
     if (fprintf(f, "%s\n", sock_to_cstr(sock_str, &sni->sn)) < 0)
     {
-        traceEvent(TRACE_ERROR, "couldn't write supernode entry to file");
+        traceError("couldn't write supernode entry to file");
     }
 }
 
@@ -74,7 +74,7 @@ struct sn_info *add_new_supernode(struct n2n_list *list, const n2n_sock_t *sn)
     struct sn_info *new = calloc(1, sizeof(struct sn_info));
     if (!new)
     {
-        traceEvent(TRACE_ERROR, "not enough memory for new SN info");
+        traceError("not enough memory for new SN info");
         return NULL;
     }
 
@@ -99,7 +99,7 @@ int update_supernodes(sn_list_t *supernodes, const n2n_sock_t *sn)
     if (add_new_supernode(&supernodes->head, sn) == NULL)
         return -1;
 
-    traceEvent(TRACE_DEBUG, "Added supernode %s", sock_to_cstr(sock_str, sn));
+    traceDebug("Added supernode %s", sock_to_cstr(sock_str, sn));
     return 1;
 }
 
@@ -144,7 +144,7 @@ struct n2n_list *read_community(FILE *f)
     ci = calloc(1, sizeof(struct comm_info));
     if (!ci)
     {
-        traceEvent(TRACE_ERROR, "couldn't allocate a new community entry");
+        traceError("couldn't allocate a new community entry");
         return NULL;
     }
 
@@ -203,7 +203,7 @@ int add_new_community(comm_list_t        *communities,
         ci = calloc(1, sizeof(struct comm_info));
         if (!ci)
         {
-            traceEvent(TRACE_ERROR, "not enough memory for new community info");
+            traceError("not enough memory for new community info");
             return -1;
         }
 
@@ -264,7 +264,7 @@ static int communities_to_array(uint16_t          *out_size,
     *out_size = list_size(list);
     if (alloc_communities(out_array, *out_size))
     {
-        traceEvent(TRACE_ERROR, "could not allocate communities array");
+        traceError("could not allocate communities array");
         return -1;
     }
 
@@ -291,7 +291,7 @@ int snm_info_add_sn(n2n_SNM_INFO_t *info, struct n2n_list *supernodes)
     info->sn_num = list_size(supernodes);
     if (alloc_supernodes(&info->sn_ptr, info->sn_num))
     {
-        traceEvent(TRACE_ERROR, "could not allocate supernodes array");
+        traceError("could not allocate supernodes array");
         return -1;
     }
 
@@ -336,7 +336,7 @@ int build_snm_info( int              sock,         /* for ADV */
         {
             if (req->comm_num != 1)
             {
-                traceEvent(TRACE_ERROR, "Invalid edge request: Community number=%d",
+                traceError("Invalid edge request: Community number=%d",
                            req->comm_num);
                 return -1;
             }
@@ -354,7 +354,7 @@ int build_snm_info( int              sock,         /* for ADV */
                 info->sn_num = ci->sn_num + 1;
                 if (alloc_supernodes(&info->sn_ptr, info->sn_num))
                 {
-                    traceEvent(TRACE_ERROR, "could not allocate supernodes array");
+                    traceError("could not allocate supernodes array");
                     return -1;
                 }
 
@@ -365,7 +365,7 @@ int build_snm_info( int              sock,         /* for ADV */
                 info->comm_num = 1;
                 if (alloc_communities(&info->comm_ptr, info->comm_num))
                 {
-                    traceEvent(TRACE_ERROR, "could not allocate community array");
+                    traceError("could not allocate community array");
                     return -1;
                 }
                 info->comm_ptr[0] = req->comm_ptr[0];

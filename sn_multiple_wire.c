@@ -17,7 +17,7 @@ static int alloc_array( void **array_ptr, unsigned int num, unsigned int item_si
         *array_ptr = calloc(num, item_size);
         if (!*array_ptr)
         {
-            traceEvent(TRACE_ERROR, "not enough memory for allocating array");
+            traceError("not enough memory for allocating array");
             return -1;
         }
     }
