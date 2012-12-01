@@ -211,9 +211,9 @@ extern const uint8_t broadcast_addr[6];
 extern const uint8_t multicast_addr[6];
 
 /* Functions */
-extern void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...);
+extern void traceEvent(int eventTraceLevel, char *file, int line, char *format, ...);
 extern int  tuntap_open(tuntap_dev *device, char *dev, const char *address_mode, char *device_ip, 
-			char *device_mask, const char * device_mac, int mtu);
+                        char *device_mask, const char *device_mac, int mtu);
 extern int  tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len);
 extern int  tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len);
 extern void tuntap_close(struct tuntap_dev *tuntap);
@@ -221,18 +221,18 @@ extern void tuntap_get_address(struct tuntap_dev *tuntap);
 
 extern SOCKET open_socket(int local_port, int bind_any);
 
-extern char* intoa(uint32_t addr, char* buf, uint16_t buf_len);
-extern char* macaddr_str(macstr_t buf, const n2n_mac_t mac);
-extern int   str2mac( uint8_t * outmac /* 6 bytes */, const char * s );
-extern char * sock_to_cstr( n2n_sock_str_t out,
-                            const n2n_sock_t * sock );
+extern char *intoa(uint32_t addr, char *buf, uint16_t buf_len);
+extern char *macaddr_str(macstr_t buf, const n2n_mac_t mac);
+extern int   str2mac( uint8_t *outmac /* 6 bytes */, const char *s);
+extern char *sock_to_cstr(n2n_sock_str_t out,
+                          const n2n_sock_t *sock);
 
-extern int sock_equal( const n2n_sock_t * a, 
-                       const n2n_sock_t * b );
+extern int sock_equal(const n2n_sock_t *a,
+                      const n2n_sock_t *b);
 
-extern uint8_t is_multi_broadcast(const uint8_t * dest_mac);
-extern char* msg_type2str(uint16_t msg_type);
-extern void hexdump(const uint8_t * buf, size_t len);
+extern uint8_t is_multi_broadcast(const uint8_t *dest_mac);
+extern char *msg_type2str(uint16_t msg_type);
+extern void hexdump(const uint8_t *buf, size_t len);
 
 void print_n2n_version();
 

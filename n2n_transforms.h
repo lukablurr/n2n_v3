@@ -30,17 +30,17 @@ struct n2n_tostat
 typedef struct n2n_tostat n2n_tostat_t;
 
 
-typedef int             (*n2n_transdeinit_f)( n2n_trans_op_t * arg );
-typedef int             (*n2n_transaddspec_f)( n2n_trans_op_t * arg, 
-                                               const n2n_cipherspec_t * cspec );
-typedef n2n_tostat_t    (*n2n_transtick_f)( n2n_trans_op_t * arg, 
-                                            time_t now );
+typedef int             (*n2n_transdeinit_f)   (n2n_trans_op_t *arg);
+typedef int             (*n2n_transaddspec_f)  (n2n_trans_op_t *arg,
+                                                const n2n_cipherspec_t *cspec);
+typedef n2n_tostat_t    (*n2n_transtick_f)     (n2n_trans_op_t *arg,
+                                                time_t now);
 
-typedef int             (*n2n_transform_f)( n2n_trans_op_t * arg,
-                                            uint8_t * outbuf,
-                                            size_t out_len,
-                                            const uint8_t * inbuf,
-                                            size_t in_len );
+typedef int             (*n2n_transform_f)     (n2n_trans_op_t *arg,
+                                                uint8_t *outbuf,
+                                                size_t out_len,
+                                                const uint8_t *inbuf,
+                                                size_t in_len);
 
 /** Holds the info associated with a data transform plugin.
  *
@@ -50,29 +50,29 @@ typedef int             (*n2n_transform_f)( n2n_trans_op_t * arg,
  */
 struct n2n_trans_op
 {
-    void *              priv;   /* opaque data. Key schedule goes here. */
+    void               *priv;       /* opaque data. Key schedule goes here. */
 
     n2n_transform_t     transform_id;   /* link header enum to a transform */
     size_t              tx_cnt;
     size_t              rx_cnt;
 
-    n2n_transdeinit_f   deinit; /* destructor function */
-    n2n_transaddspec_f  addspec; /* parse opaque data from a key schedule file. */
-    n2n_transtick_f     tick;   /* periodic maintenance */
-    n2n_transform_f     fwd;    /* encode a payload */
-    n2n_transform_f     rev;    /* decode a payload */
+    n2n_transdeinit_f   deinit;     /* destructor function */
+    n2n_transaddspec_f  addspec;    /* parse opaque data from a key schedule file. */
+    n2n_transtick_f     tick;       /* periodic maintenance */
+    n2n_transform_f     fwd;        /* encode a payload */
+    n2n_transform_f     rev;        /* decode a payload */
 };
 
 /* Setup a single twofish SA for single-key operation. */
-int transop_twofish_setup( n2n_trans_op_t * ttt, 
-                           n2n_sa_t sa_num,
-                           uint8_t * encrypt_pwd, 
-                           uint32_t encrypt_pwd_len );
+int transop_twofish_setup(n2n_trans_op_t *ttt,
+                          n2n_sa_t sa_num,
+                          uint8_t *encrypt_pwd,
+                          uint32_t encrypt_pwd_len);
 
 /* Initialise an empty transop ready to receive cipherspec elements. */
-int  transop_twofish_init( n2n_trans_op_t * ttt );
-int  transop_aes_init( n2n_trans_op_t * ttt );
-void transop_null_init( n2n_trans_op_t * ttt );
+int  transop_twofish_init(n2n_trans_op_t *ttt);
+int  transop_aes_init(n2n_trans_op_t *ttt);
+void transop_null_init(n2n_trans_op_t *ttt);
 
 #endif /* #if !defined(N2N_TRANSFORMS_H_) */
 

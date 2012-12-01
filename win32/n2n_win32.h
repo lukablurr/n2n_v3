@@ -93,14 +93,15 @@ struct ip {
 
 /* ************************************* */
 
-typedef struct tuntap_dev {
-	HANDLE device_handle;
-	char *device_name;
-	char *ifName;
-	OVERLAPPED overlap_read, overlap_write;
-	uint8_t      mac_addr[6];
-	uint32_t     ip_addr, device_mask;
-	unsigned int mtu;
+typedef struct tuntap_dev
+{
+    HANDLE          device_handle;
+    char           *device_name;
+    char           *ifName;
+    OVERLAPPED      overlap_read, overlap_write;
+    uint8_t         mac_addr[6];
+    uint32_t        ip_addr, device_mask;
+    unsigned int    mtu;
 } tuntap_dev;
 
 #define index(a, b) strchr(a, b)

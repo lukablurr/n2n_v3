@@ -84,17 +84,17 @@ static const char * const DELIMITERS=" \t\n\r";
 
 
 /** @return number of cipherspec items filled. */
-int     n2n_read_keyfile( n2n_cipherspec_t * specs,     /* fill out this array of cipherspecs */
-                          size_t numspecs,              /* number of slots in the array. */
-                          const char * ctrlfile_path ); /* path to control file */
+int     n2n_read_keyfile(n2n_cipherspec_t *specs,      /* fill out this array of cipherspecs */
+                         size_t numspecs,              /* number of slots in the array. */
+                         const char *ctrlfile_path);   /* path to control file */
 
-int     validCipherSpec( const n2n_cipherspec_t * k,
-                         time_t now );
+int     validCipherSpec(const n2n_cipherspec_t *k,
+                        time_t now );
 
-ssize_t  n2n_parse_hex( uint8_t * keyBuf, 
-                        size_t keyMax, 
-                        const char * textKey,
-                        size_t textLen );
+ssize_t  n2n_parse_hex(uint8_t *keyBuf,
+                       size_t keyMax,
+                       const char *textKey,
+                       size_t textLen);
 
 /*----------------------------------------------------------------------------*/
 

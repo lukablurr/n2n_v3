@@ -81,10 +81,10 @@ struct n2n_sock
 {
     uint8_t     family;         /* AF_INET or AF_INET6; or 0 if invalid */
     uint16_t    port;           /* host order */
-    union 
+    union
     {
-    uint8_t     v6[IPV6_SIZE];  /* byte sequence */
-    uint8_t     v4[IPV4_SIZE];  /* byte sequence */
+        uint8_t v6[IPV6_SIZE];  /* byte sequence */
+        uint8_t v4[IPV4_SIZE];  /* byte sequence */
     } addr;
 };
 
@@ -187,135 +187,135 @@ typedef struct n2n_REGISTER_SUPER_NAK n2n_REGISTER_SUPER_NAK_t;
 
 struct n2n_buf
 {
-    uint8_t *   data;
-    size_t      size;
+    uint8_t       *data;
+    size_t         size;
 };
 
 typedef struct n2n_buf n2n_buf_t;
 
-int encode_uint8( uint8_t * base, 
-                  size_t * idx,
-                  const uint8_t v );
+int encode_uint8(uint8_t *base,
+                 size_t *idx,
+                 const uint8_t v);
 
-int decode_uint8( uint8_t * out,
-                  const uint8_t * base,
-                  size_t * rem,
-                  size_t * idx );
+int decode_uint8(uint8_t *out,
+                 const uint8_t *base,
+                 size_t *rem,
+                 size_t *idx);
 
-int encode_uint16( uint8_t * base, 
-                   size_t * idx,
-                   const uint16_t v );
+int encode_uint16(uint8_t *base,
+                  size_t *idx,
+                  const uint16_t v);
 
-int decode_uint16( uint16_t * out,
-                   const uint8_t * base,
-                   size_t * rem,
-                   size_t * idx );
+int decode_uint16(uint16_t *out,
+                  const uint8_t *base,
+                  size_t *rem,
+                  size_t *idx);
 
-int encode_uint32( uint8_t * base, 
-                   size_t * idx,
-                   const uint32_t v );
+int encode_uint32(uint8_t *base,
+                  size_t *idx,
+                  const uint32_t v);
 
-int decode_uint32( uint32_t * out,
-                   const uint8_t * base,
-                   size_t * rem,
-                   size_t * idx );
+int decode_uint32(uint32_t *out,
+                  const uint8_t *base,
+                  size_t *rem,
+                  size_t *idx);
 
-int encode_buf( uint8_t * base, 
-                size_t * idx,
-                const void * p, 
-                size_t s);
+int encode_buf(uint8_t *base,
+               size_t *idx,
+               const void *p,
+               size_t s);
 
-int decode_buf( uint8_t * out,
-                size_t bufsize,
-                const uint8_t * base,
-                size_t * rem,
-                size_t * idx );
+int decode_buf(uint8_t *out,
+               size_t bufsize,
+               const uint8_t *base,
+               size_t *rem,
+               size_t *idx);
 
-int encode_mac( uint8_t * base, 
-                size_t * idx,
-                const n2n_mac_t m );
+int encode_mac(uint8_t *base,
+               size_t *idx,
+               const n2n_mac_t m);
 
-int decode_mac( uint8_t * out, /* of size N2N_MAC_SIZE. This clearer than passing a n2n_mac_t */
-                const uint8_t * base,
-                size_t * rem,
-                size_t * idx );
+int decode_mac(uint8_t *out, /* of size N2N_MAC_SIZE. This clearer than passing a n2n_mac_t */
+               const uint8_t *base,
+               size_t *rem,
+               size_t *idx);
 
-int encode_common( uint8_t * base, 
-                   size_t * idx,
-                   const n2n_common_t * common );
+int encode_common(uint8_t *base,
+                  size_t *idx,
+                  const n2n_common_t *common);
 
-int decode_common( n2n_common_t * out,
-                   const uint8_t * base,
-                   size_t * rem,
-                   size_t * idx );
+int decode_common(n2n_common_t *out,
+                  const uint8_t *base,
+                  size_t *rem,
+                  size_t *idx);
 
-int encode_sock( uint8_t * base, 
-                 size_t * idx,
-                 const n2n_sock_t * sock );
+int encode_sock(uint8_t *base,
+                size_t *idx,
+                const n2n_sock_t *sock);
 
-int decode_sock( n2n_sock_t * sock,
-                 const uint8_t * base,
-                 size_t * rem,
-                 size_t * idx );
+int decode_sock(n2n_sock_t *sock,
+                const uint8_t *base,
+                size_t *rem,
+                size_t *idx);
 
-int encode_REGISTER( uint8_t * base, 
-                     size_t * idx,
-                     const n2n_common_t * common, 
-                     const n2n_REGISTER_t * reg );
+int encode_REGISTER(uint8_t *base,
+                    size_t *idx,
+                    const n2n_common_t *common,
+                    const n2n_REGISTER_t *reg);
 
-int decode_REGISTER( n2n_REGISTER_t * pkt,
-                     const n2n_common_t * cmn, /* info on how to interpret it */
-                     const uint8_t * base,
-                     size_t * rem,
-                     size_t * idx );
+int decode_REGISTER(n2n_REGISTER_t *pkt,
+                    const n2n_common_t *cmn, /* info on how to interpret it */
+                    const uint8_t *base,
+                    size_t *rem,
+                    size_t *idx);
 
-int encode_REGISTER_SUPER( uint8_t * base, 
-                           size_t * idx,
-                           const n2n_common_t * common, 
-                           const n2n_REGISTER_SUPER_t * reg );
+int encode_REGISTER_SUPER(uint8_t *base,
+                          size_t *idx,
+                          const n2n_common_t *common,
+                          const n2n_REGISTER_SUPER_t *reg);
 
-int decode_REGISTER_SUPER( n2n_REGISTER_SUPER_t * pkt,
-                           const n2n_common_t * cmn, /* info on how to interpret it */
-                           const uint8_t * base,
-                           size_t * rem,
-                           size_t * idx );
+int decode_REGISTER_SUPER(n2n_REGISTER_SUPER_t *pkt,
+                          const n2n_common_t *cmn, /* info on how to interpret it */
+                          const uint8_t *base,
+                          size_t *rem,
+                          size_t *idx);
 
-int encode_REGISTER_ACK( uint8_t * base, 
-                         size_t * idx,
-                         const n2n_common_t * common, 
-                         const n2n_REGISTER_ACK_t * reg );
+int encode_REGISTER_ACK(uint8_t *base,
+                        size_t *idx,
+                        const n2n_common_t *common,
+                        const n2n_REGISTER_ACK_t *reg);
 
-int decode_REGISTER_ACK( n2n_REGISTER_ACK_t * pkt,
-                         const n2n_common_t * cmn, /* info on how to interpret it */
-                         const uint8_t * base,
-                         size_t * rem,
-                         size_t * idx );
+int decode_REGISTER_ACK(n2n_REGISTER_ACK_t *pkt,
+                        const n2n_common_t *cmn, /* info on how to interpret it */
+                        const uint8_t *base,
+                        size_t *rem,
+                        size_t *idx);
 
-int encode_REGISTER_SUPER_ACK( uint8_t * base,
-                               size_t * idx,
-                               const n2n_common_t * cmn,
-                               const n2n_REGISTER_SUPER_ACK_t * reg );
+int encode_REGISTER_SUPER_ACK(uint8_t *base,
+                              size_t *idx,
+                              const n2n_common_t *cmn,
+                              const n2n_REGISTER_SUPER_ACK_t *reg);
 
-int decode_REGISTER_SUPER_ACK( n2n_REGISTER_SUPER_ACK_t * reg,
-                               const n2n_common_t * cmn, /* info on how to interpret it */
-                               const uint8_t * base,
-                               size_t * rem,
-                               size_t * idx );
+int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
+                              const n2n_common_t *cmn, /* info on how to interpret it */
+                              const uint8_t *base,
+                              size_t *rem,
+                              size_t *idx);
 
-int fill_sockaddr( struct sockaddr * addr, 
-                   size_t addrlen, 
-                   const n2n_sock_t * sock );
+int fill_sockaddr(struct sockaddr *addr,
+                  size_t addrlen,
+                  const n2n_sock_t *sock);
 
-int encode_PACKET( uint8_t * base, 
-                   size_t * idx,
-                   const n2n_common_t * common, 
-                   const n2n_PACKET_t * pkt );
+int encode_PACKET(uint8_t *base,
+                  size_t *idx,
+                  const n2n_common_t *common,
+                  const n2n_PACKET_t *pkt);
 
-int decode_PACKET( n2n_PACKET_t * pkt,
-                   const n2n_common_t * cmn, /* info on how to interpret it */
-                   const uint8_t * base,
-                   size_t * rem,
-                   size_t * idx );
+int decode_PACKET(n2n_PACKET_t *pkt,
+                  const n2n_common_t *cmn, /* info on how to interpret it */
+                  const uint8_t *base,
+                  size_t *rem,
+                  size_t *idx);
 
 
 #endif /* #if !defined( N2N_WIRE_H_ ) */
