@@ -10,6 +10,9 @@
 
 #include "n2n.h"
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+#include "sn_multiple.h"
+#endif
 
 #define N2N_SN_LPORT_DEFAULT 7654
 #define N2N_SN_PKTBUF_SIZE   2048
@@ -38,6 +41,14 @@ struct n2n_sn
     uint16_t            lport;          /* Local UDP port to bind to. */
     int                 sock;           /* Main socket for UDP traffic with edges. */
     int                 mgmt_sock;      /* management socket. */
+#ifdef N2N_MULTIPLE_SUPERNODES
+    uint8_t             snm_discovery_state;
+    int                 sn_port;
+    int                 sn_sock;        /* multiple supernodes socket */
+    unsigned int        seq_num;        /* sequence number for SN communication */
+    sn_list_t           supernodes;
+    comm_list_t         communities;
+#endif
     struct peer_info *  edges;          /* Link list of registered edges. */
 };
 
@@ -71,6 +82,14 @@ static int init_sn(n2n_sn_t *sss)
     sss->sock = -1;
     sss->mgmt_sock = -1;
     sss->edges = NULL;
+    
+#ifdef N2N_MULTIPLE_SUPERNODES
+    sss->snm_discovery_state = N2N_SNM_STATE_DISCOVERY;
+    sss->sn_sock = -1;
+    sss->seq_num = -1;
+    memset(&sss->supernodes, 0, sizeof(sn_list_t));
+    memset(&sss->communities, 0, sizeof(comm_list_t));
+#endif
 
     return 0; /* OK */
 }
@@ -92,6 +111,16 @@ static void deinit_sn(n2n_sn_t *sss)
     sss->mgmt_sock = -1;
 
     purge_peer_list(&(sss->edges), 0xffffffff);
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    if (sss->sn_sock)
+    {
+        closesocket(sss->sn_sock);
+    }
+    sss->seq_num = -1;
+    list_clear(&sss->supernodes.head);
+    list_clear(&sss->communities.head);
+#endif
 }
 
 
@@ -173,7 +202,8 @@ static int update_edge(n2n_sn_t *sss,
  *
  *  @return -1 on error otherwise number of bytes sent
  */
-static ssize_t sendto_sock(n2n_sn_t * sss, 
+static ssize_t sendto_sock(/*n2n_sn_t * sss,*/
+                           int sock_fd,
                            const n2n_sock_t *sock,
                            const uint8_t *pktbuf,
                            size_t pktsize)
@@ -192,7 +222,7 @@ static ssize_t sendto_sock(n2n_sn_t * sss,
                    pktsize,
                    sock_to_cstr(sockbuf, sock));
 
-        return sendto(sss->sock, pktbuf, pktsize, 0,
+        return sendto( /*sss->sock*/sock_fd, pktbuf, pktsize, 0,
                       (const struct sockaddr *) &udpsock, sizeof(struct sockaddr_in));
     }
     else
@@ -223,7 +253,7 @@ static int try_forward(n2n_sn_t *sss,
     if (NULL != scan)
     {
         int data_sent_len;
-        data_sent_len = sendto_sock( sss, &(scan->sock), pktbuf, pktsize );
+        data_sent_len = sendto_sock(sss->sock, &(scan->sock), pktbuf, pktsize);
 
         if (data_sent_len == pktsize)
         {
@@ -279,9 +309,9 @@ static int try_broadcast(n2n_sn_t *sss,
         /* REVISIT: exclude if the destination socket is where the packet came from. */
         {
             int data_sent_len;
-          
-            data_sent_len = sendto_sock(sss, &(scan->sock), pktbuf, pktsize);
-            
+
+            data_sent_len = sendto_sock(sss->sock, &(scan->sock), pktbuf, pktsize);
+
             if (data_sent_len != pktsize)
             {
                 ++(sss->stats.errors);
@@ -371,6 +401,356 @@ static int process_mgmt(n2n_sn_t *sss,
     return 0;
 }
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+
+static int load_snm_info(n2n_sn_t *sss)
+{
+    int new_ones = 0;
+    struct sn_info *sni = NULL;
+
+    /* load supernodes */
+    struct n2n_list cmdline_supernodes  = sss->supernodes.head;
+    list_init(&sss->supernodes.head);
+
+    sprintf(sss->supernodes.filename, "SN_SNM_%d", sss->sn_port);
+    if (read_supernodes_from_file( sss->supernodes.filename,
+                                  &sss->supernodes.head))
+    {
+        traceEvent(TRACE_ERROR, "Failed to open supernodes file. %s", strerror(errno));
+        return -1;
+    }
+
+    /* check if we had some new supernodes before reading from file */
+
+    N2N_LIST_FOR_EACH_ENTRY(sni, &cmdline_supernodes)
+    {
+        new_ones += update_supernodes(&sss->supernodes, &sni->sn);
+    }
+    list_clear(&cmdline_supernodes);
+
+    if (new_ones)
+    {
+        write_supernodes_to_file( sss->supernodes.filename,
+                                 &sss->supernodes.head);
+    }
+
+    /* load communities */
+    sprintf(sss->communities.filename, "SN_COMM_%d", sss->sn_port);
+    if (read_communities_from_file( sss->communities.filename,
+                                   &sss->communities.persist))
+    {
+        traceEvent(TRACE_ERROR, "Failed to open communities file. %s", strerror(errno));
+        return -1;
+    }
+
+    if (list_empty(&sss->supernodes.head))    /* first running supernode */
+    {
+        sss->snm_discovery_state = N2N_SNM_STATE_READY;
+    }
+
+    return 0;
+}
+
+
+static void send_snm_adv(n2n_sn_t *sss, n2n_sock_t *sn, struct n2n_list *comm_list);
+
+static void advertise_all(n2n_sn_t *sss)
+{
+    struct sn_info *sni = NULL;
+
+    if (list_empty(&sss->communities.head))
+        return;
+
+    N2N_LIST_FOR_EACH_ENTRY(sni, &sss->supernodes.head)
+    {
+        send_snm_adv(sss, &sni->sn, &sss->communities.head);
+    }
+}
+
+static void advertise_community_to_all(n2n_sn_t *sss, const n2n_community_t community)
+{
+    struct sn_info *sni = NULL;
+    struct comm_info ci;
+    struct n2n_list  tmp_list;
+
+    memset(&ci, 0, sizeof(struct comm_info));
+    memcpy(ci.name, community, sizeof(n2n_community_t));
+    list_add(&tmp_list, &ci.list);
+
+    N2N_LIST_FOR_EACH_ENTRY(sni, &sss->supernodes.head)
+    {
+        send_snm_adv(sss, &sni->sn, &tmp_list);
+    }
+}
+
+static void communities_discovery(n2n_sn_t *sss, time_t nowTime)
+{
+    if (nowTime - sss->start_time < N2N_SUPER_DISCOVERY_INTERVAL)
+    {
+        return;
+    }
+
+    if (sss->snm_discovery_state == N2N_SNM_STATE_DISCOVERY)
+    {
+        struct n2n_list tmp_list = sss->communities.head;   /* queried communities */
+        int comm_num = list_size(&sss->communities.persist);
+
+        /* add new communities */
+        struct comm_info *ci = N2N_LIST_FIRST_ENTRY(&tmp_list, struct comm_info);
+
+        sss->communities.head = sss->communities.persist;
+
+        while (comm_num < N2N_MAX_COMM_PER_SN && ci != NULL)
+        {
+            if (ci->sn_num < N2N_MIN_SN_PER_COMM)
+            {
+                /* add new community without setting supernodes */
+                if (add_new_community(&sss->communities, ci->name, NULL))
+                    comm_num++;
+            }
+
+            ci = N2N_LIST_NEXT_ENTRY(ci);
+        }
+        list_clear(&tmp_list);
+
+        /* send ADV to all */
+        advertise_all(sss);
+
+        sss->snm_discovery_state = N2N_SNM_STATE_READY;
+    }
+}
+
+static void send_snm_req(n2n_sn_t         *sss,
+                         n2n_sock_t       *sn,
+                         int               req_communities,
+                         snm_comm_name_t  *communities,
+                         int               communities_num)
+{
+    uint8_t pktbuf[N2N_PKT_BUF_SIZE];
+    size_t idx;
+    n2n_sock_str_t sockbuf;
+    snm_hdr_t hdr = { SNM_TYPE_REQ_LIST_MSG, 0, ++sss->seq_num };
+    n2n_SNM_REQ_t req = { 0, NULL };
+
+    if (sn_is_loopback(sn, sss->sn_port))
+        return;
+
+    SET_S(hdr.flags);
+
+    if (req_communities)
+    {
+        SET_C(hdr.flags);
+    }
+    else if (communities)
+    {
+        SET_N(hdr.flags);
+        req.comm_num = communities_num & 0xFFFF;
+        req.comm_ptr = communities;
+    }
+
+    idx = 0;
+    encode_SNM_REQ(pktbuf, &idx, &hdr, &req);
+
+    traceEvent(TRACE_INFO, "send SNM_REQ to %s", sock_to_cstr(sockbuf, sn));
+
+    sendto_sock(sss->sn_sock, sn, pktbuf, idx);
+}
+
+static void send_req_to_all_supernodes(n2n_sn_t         *sss,
+                                       int               req_communities,
+                                       snm_comm_name_t  *communities,
+                                       int               communities_num)
+{
+    struct sn_info *sni = NULL;
+
+    N2N_LIST_FOR_EACH_ENTRY(sni, &sss->supernodes.head)
+    {
+        /* check what's new */
+        send_snm_req(sss, &sni->sn, req_communities, communities, communities_num);
+    }
+}
+
+static void send_snm_rsp(n2n_sn_t *sss, const n2n_sock_t *sock, snm_hdr_t *hdr, n2n_SNM_REQ_t *req)
+{
+    n2n_sock_str_t sock_buf;
+    uint8_t pktbuf[N2N_PKT_BUF_SIZE];
+    size_t  idx;
+    snm_hdr_t rsp_hdr;
+    n2n_SNM_INFO_t rsp;
+
+    build_snm_info(sss->sock, &sss->supernodes, &sss->communities, hdr, req, &rsp_hdr, &rsp);
+
+    idx = 0;
+    encode_SNM_INFO(pktbuf, &idx, &rsp_hdr, &rsp);
+
+    traceEvent(TRACE_INFO, "send SNM_RSP to %s", sock_to_cstr(sock_buf, sock));
+    log_SNM_INFO(&rsp);
+
+    clear_snm_info(&rsp);
+
+    sendto_sock(sss->sn_sock, sock, pktbuf, idx);
+}
+
+static void send_snm_adv(n2n_sn_t *sss, n2n_sock_t *sn, struct n2n_list *comm_list)
+{
+    uint8_t pktbuf[N2N_PKT_BUF_SIZE];
+    size_t idx;
+    n2n_sock_str_t sockbuf;
+    snm_hdr_t hdr;
+    n2n_SNM_ADV_t adv;
+
+    if (sn_is_loopback(sn, sss->sn_port))
+        return;
+
+    build_snm_adv(sss->sock, comm_list, &hdr, &adv);
+
+    if (sss->snm_discovery_state != N2N_SNM_STATE_READY)
+    {
+        SET_A(hdr.flags);
+    }
+
+    idx = 0;
+    encode_SNM_ADV(pktbuf, &idx, &hdr, &adv);
+
+    traceEvent(TRACE_INFO, "send ADV to %s", sock_to_cstr(sockbuf, sn));
+    log_SNM_ADV(&adv);
+
+    sendto_sock(sss->sn_sock, sn, pktbuf, idx);
+}
+
+static int process_sn_msg(n2n_sn_t *sss,
+                          const struct sockaddr_in *sender_sock,
+                          const uint8_t *msg_buf,
+                          size_t msg_size,
+                          time_t now)
+{
+    snm_hdr_t           hdr; /* common fields in the packet header */
+    size_t              rem;
+    size_t              idx;
+    size_t              msg_type;
+    n2n_sock_t          sender_sn;
+
+
+    traceEvent(TRACE_DEBUG, "process_sn_msg(%lu)", msg_size);
+
+    sn_cpy(&sender_sn, (const n2n_sock_t *) sender_sock);
+    sender_sn.port = htons(sender_sn.port);
+
+    rem = msg_size; /* Counts down bytes of packet to protect against buffer overruns. */
+    idx = 0; /* marches through packet header as parts are decoded. */
+    if (decode_SNM_hdr(&hdr, msg_buf, &rem, &idx) < 0)
+    {
+        traceEvent(TRACE_ERROR, "Failed to decode header");
+        return -1; /* failed to decode packet */
+    }
+    log_SNM_hdr(&hdr);
+
+    msg_type = hdr.type; /* message type */
+
+    if (msg_type == SNM_TYPE_REQ_LIST_MSG)
+    {
+        n2n_SNM_REQ_t req;
+
+        if (sss->snm_discovery_state != N2N_SNM_STATE_READY)
+        {
+            traceEvent(TRACE_ERROR, "Received SNM REQ but supernode is NOT READY");
+            return -1;
+        }
+        
+        decode_SNM_REQ(&req, &hdr, msg_buf, &rem, &idx);
+        log_SNM_REQ(&req);
+
+        if (GET_A(hdr.flags))
+        {
+            /* request for ADV */
+
+            if (GET_E(hdr.flags))
+            {
+                /* request from edge wanting to register a new community */
+                struct comm_info *ci = NULL;
+                int need_write = 0;
+
+                if (req.comm_num != 1)
+                {
+                    traceEvent(TRACE_ERROR, "Received SNM REQ from edge with comm_num=%d", req.comm_num);
+                    return -1;
+                }
+
+                need_write = add_new_community(&sss->communities, req.comm_ptr[0].name, &ci);
+                if (need_write)
+                {
+                    write_communities_to_file( sss->communities.filename,
+                                              &sss->communities.head);
+
+                    advertise_community_to_all(sss, ci->name);
+                }
+            }
+
+            send_snm_adv(sss, &sender_sn, NULL);
+        }
+        else
+        {
+            /* request for INFO */
+            send_snm_rsp(sss, &sender_sn, &hdr, &req);
+        }
+
+        if (!GET_E(hdr.flags))
+        {
+            update_and_save_supernodes(&sss->supernodes, &sender_sn, 1);
+        }
+    }
+    else if (msg_type == SNM_TYPE_RSP_LIST_MSG)
+    {
+        n2n_SNM_INFO_t rsp;
+        int sn_num = 0;
+        struct sn_info *new_sn = NULL;
+
+        if (sss->snm_discovery_state == N2N_SNM_STATE_READY)
+        {
+            traceEvent(TRACE_ERROR, "Received SNM RSP but supernode is READY");
+            return -1;
+        }
+        
+        decode_SNM_INFO(&rsp, &hdr, msg_buf, &rem, &idx);
+        log_SNM_INFO(&rsp);
+
+        sn_num = process_snm_rsp(&sss->supernodes, &sss->communities,
+                                 &sender_sn, &hdr, &rsp);
+
+        /* send requests to the recently added supernodes */
+        N2N_LIST_FOR_EACH_ENTRY(new_sn, &sss->supernodes.head)
+        {
+            if (sn_num == 0)
+                break;
+
+            send_snm_req(sss, &new_sn->sn, 1, NULL, 0);
+            sn_num--;
+        }
+    }
+    else if (msg_type == SNM_TYPE_ADV_MSG)
+    {
+        n2n_SNM_ADV_t adv;
+        int communities_updated = 0;
+
+        decode_SNM_ADV(&adv, &hdr, msg_buf, &rem, &idx);
+        log_SNM_ADV(&adv);
+
+        communities_updated = process_snm_adv(&sss->supernodes,
+                                              &sss->communities,
+                                              &sender_sn, &adv);
+
+        if (communities_updated && GET_A(hdr.flags))
+        {
+            /* sending supernode is requesting ADV */
+            send_snm_adv(sss, &sender_sn, &sss->communities.head);
+        }
+
+        /* new supernode will be advertised on REG SUPER ACK */
+    }
+
+    return 0;
+}
+#endif
 
 /** Examine a datagram and determine what to do with it.
  *
@@ -584,6 +964,18 @@ static int process_udp(n2n_sn_t *sss,
 
         update_edge(sss, reg.edgeMac, cmn.community, &(ack.sock), now);
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+        {
+            struct comm_info *ci = comm_find(&sss->communities.head,
+                                             cmn.community, strlen((const char *) cmn.community));
+            if (ci)
+            {
+                ack.num_sn = ci->sn_num;
+                memcpy(&ack.sn_bak, ci->sn_sock, ci->sn_num * sizeof(n2n_sock_t));
+            }
+        }
+#endif
+
         encode_REGISTER_SUPER_ACK(ackbuf, &encx, &cmn2, &ack);
 
         sendto(sss->sock, ackbuf, encx, 0,
@@ -606,6 +998,11 @@ static void exit_help(int argc, char * const argv[])
     fprintf(stderr, "%s usage\n", argv[0]);
     fprintf(stderr, "-l <lport>\tSet UDP main listen port to <lport>\n");
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+    fprintf(stderr, "-s <snm_port>\tSet SNM listen port to <snm_port>\n");
+    fprintf(stderr, "-i <ip:port>\tSet running SNM supernode to <ip:port>\n");
+#endif
+
 #if defined(N2N_HAVE_DAEMON)
     fprintf(stderr, "-f        \tRun in foreground.\n");
 #endif /* #if defined(N2N_HAVE_DAEMON) */
@@ -622,6 +1019,10 @@ static int run_loop(n2n_sn_t *sss);
 static const struct option long_options[] = {
   { "foreground",      no_argument,       NULL, 'f' },
   { "local-port",      required_argument, NULL, 'l' },
+#ifdef N2N_MULTIPLE_SUPERNODES
+  { "sn-port",         required_argument, NULL, 's' },
+  { "supernode",       required_argument, NULL, 'i' },
+#endif
   { "help"   ,         no_argument,       NULL, 'h' },
   { "verbose",         no_argument,       NULL, 'v' },
   { NULL,              0,                 NULL,  0  }
@@ -637,13 +1038,31 @@ int main(int argc, char * const argv[])
     {
         int opt;
 
-        while((opt = getopt_long(argc, argv, "fl:vh", long_options, NULL)) != -1) 
+#ifdef N2N_MULTIPLE_SUPERNODES
+        const char *optstring = "fl:s:i:vh";
+#else
+        const char *optstring = "fl:vh";
+#endif
+
+        while ((opt = getopt_long(argc, argv, optstring, long_options, NULL)) != -1)
         {
             switch (opt)
             {
             case 'l': /* local-port */
                 sss.lport = atoi(optarg);
                 break;
+#ifdef N2N_MULTIPLE_SUPERNODES
+            case 's':
+                sss.sn_port = atoi(optarg);
+                break;
+            case 'i':
+            {
+                n2n_sock_t sn;
+                sock_from_cstr(&sn, optarg);
+                update_supernodes(&sss.supernodes, &sn);
+                break;
+            }
+#endif
             case 'f': /* foreground */
                 sss.daemon = 0;
                 break;
@@ -693,6 +1112,26 @@ int main(int argc, char * const argv[])
         traceEvent(TRACE_NORMAL, "supernode is listening on UDP %u (management)", N2N_SN_MGMT_PORT);
     }
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+    if (load_snm_info(&sss))
+    {
+        traceEvent(TRACE_ERROR, "Failed to load SNM information. %s", strerror(errno));
+        exit(-2);
+    }
+
+    sss.sn_sock = open_socket(sss.sn_port, 1 /* bind ANY */ );
+    if (-1 == sss.sn_sock)
+    {
+        traceEvent(TRACE_ERROR, "Failed to open supernodes communication socket. %s", strerror(errno));
+        exit(-2);
+    }
+
+    traceEvent(TRACE_NORMAL, "supernode is listening on UDP %u (supernodes communication)", sss.sn_port);
+
+    send_req_to_all_supernodes(&sss, (sss.snm_discovery_state != N2N_SNM_STATE_READY), NULL, 0);
+
+#endif /* #ifdef N2N_MULTIPLE_SUPERNODES */
+
     traceEvent(TRACE_NORMAL, "supernode started");
 
     return run_loop(&sss);
@@ -720,6 +1159,16 @@ static int run_loop(n2n_sn_t *sss)
         FD_ZERO(&socket_mask);
         max_sock = MAX(sss->sock, sss->mgmt_sock);
 
+#ifdef N2N_MULTIPLE_SUPERNODES
+        max_sock = MAX(max_sock, sss->sn_sock);
+        FD_SET(sss->sn_sock, &socket_mask);
+
+        if (sss->snm_discovery_state != N2N_SNM_STATE_READY)
+        {
+            communities_discovery(sss, time(NULL));
+        }
+#endif
+
         FD_SET(sss->sock, &socket_mask);
         FD_SET(sss->mgmt_sock, &socket_mask);
 
@@ -731,6 +1180,28 @@ static int run_loop(n2n_sn_t *sss)
 
         if (rc > 0)
         {
+#ifdef N2N_MULTIPLE_SUPERNODES
+            if (FD_ISSET(sss->sn_sock, &socket_mask))
+            {
+                struct sockaddr_in  sender_sock;
+                size_t              i;
+
+                i = sizeof(sender_sock);
+                bread = recvfrom(sss->sn_sock, pktbuf, N2N_SN_PKTBUF_SIZE, 0/*flags*/,
+                                 (struct sockaddr *)&sender_sock, (socklen_t*)&i);
+
+                if (bread <= 0)
+                {
+                    traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
+                    keep_running = 0;
+                    break;
+                }
+
+                /* We have a datagram to process */
+                process_sn_msg(sss, &sender_sock, pktbuf, bread, now);
+            }
+#endif
+
             if (FD_ISSET(sss->sock, &socket_mask)) 
             {
                 struct sockaddr_in  sender_sock;
