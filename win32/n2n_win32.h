@@ -11,7 +11,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
-#if defined(__MINGW32__)
+#if defined(__MINGW32__) || defined(__CYGWIN__)
 /* should be defined here and before winsock gets included */
 #define _WIN32_WINNT 0x501 //Otherwise the linker doesnt find getaddrinfo
 #include <inttypes.h>
@@ -40,6 +40,15 @@ typedef unsigned short u_int16_t;
 typedef unsigned char u_int8_t;
 
 typedef int ssize_t;
+
+#define snprintf _snprintf
+#define strdup   _strdup
+
+#else
+
+#define _snprintf snprintf
+#define _strdup   strdup
+
 #endif /* #ifdef _MSC_VER */
 
 typedef unsigned long in_addr_t;
@@ -48,9 +57,6 @@ typedef unsigned long in_addr_t;
 #define EAFNOSUPPORT   WSAEAFNOSUPPORT 
 #define MAX(a,b) (a > b ? a : b)
 #define MIN(a,b) (a < b ? a : b)
-
-#define snprintf _snprintf
-#define strdup _strdup
 
 #define socklen_t int
 

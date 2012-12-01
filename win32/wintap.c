@@ -23,6 +23,7 @@ void initWin32()
     }
 }
 
+static
 int open_wintap(struct tuntap_dev *device,
                 const char *address_mode, /* "static" or "dhcp" */
                 char *device_ip, 
@@ -50,7 +51,7 @@ int open_wintap(struct tuntap_dev *device,
     /* Open registry and look for network adapters */
     if ((rc = RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ, &key)))
     {
-        printf("Unable to read registry: [rc=%d]\n", rc);
+        printf("Unable to read registry: [rc=%ld]\n", rc);
         exit(-1);
         /* MSVC Note: If you keep getting rc=2 errors, make sure you set:
            Project -> Properties -> Configuration Properties -> General -> Character set

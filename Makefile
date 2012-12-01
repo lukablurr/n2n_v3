@@ -16,6 +16,7 @@ PLATOPTS_SPARC64=-mcpu=ultrasparc -pipe -fomit-frame-pointer -ffast-math -finlin
 N2N_DEFINES=
 N2N_OBJS_OPT=
 LIBS_EDGE_OPT=
+LIBS_SN_OPT=
 
 N2N_OPTION_AES?="yes"
 #N2N_OPTION_AES=no
@@ -45,10 +46,25 @@ MAN8DIR=$(MANDIR)/man8
 
 N2N_LIB=n2n.a
 N2N_OBJS=n2n.o n2n_keyfile.o wire.o minilzo.o twofish.o \
-         transform_null.o transform_tf.o transform_aes.o \
-         tuntap_freebsd.o tuntap_netbsd.o tuntap_linux.o tuntap_osx.o version.o
+         transform_null.o transform_tf.o transform_aes.o
+         
+XNIX_OBJS=tuntap_freebsd.o tuntap_netbsd.o tuntap_linux.o tuntap_osx.o version.o
+         
+WIN32_DIR=win32
+WIN32_OBJS=$(WIN32_DIR)/wintap.o $(WIN32_DIR)/version-msvc.o
+
+ifeq ($(shell uname -o), Cygwin)
+	N2N_OBJS+=$(WIN32_OBJS)
+	CFLAGS+="-DWIN32"
+	CFLAGS+="-D__USE_W32_SOCKETS"
+	LIBS_EDGE_OPT+=-lws2_32
+	LIBS_SN_OPT+=-lws2_32
+else
+	N2N_OBJS+=$(XNIX_OBJS)
+endif
+
 LIBS_EDGE+=$(LIBS_EDGE_OPT)
-LIBS_SN=
+LIBS_SN+=$(LIBS_SN_OPT)
 
 #For OpenSolaris (Solaris too?)
 ifeq ($(shell uname), SunOS)
@@ -76,7 +92,7 @@ benchmark: benchmark.c $(N2N_LIB) n2n_wire.h n2n.h Makefile
 	$(CC) $(CFLAGS) benchmark.c $(N2N_LIB) $(LIBS_SN) -o benchmark
 
 .c.o: n2n.h n2n_keyfile.h n2n_transforms.h n2n_wire.h twofish.h Makefile
-	$(CC) $(CFLAGS) -c $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
 %.gz : %
 	gzip -c $< > $@
