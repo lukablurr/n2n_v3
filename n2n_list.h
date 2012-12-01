@@ -9,6 +9,9 @@
 #define N2N_LIST_H_
 
 
+#include <stddef.h>
+
+
 
 struct n2n_list
 {
