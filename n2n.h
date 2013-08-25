@@ -56,6 +56,10 @@
 #include <time.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #ifndef WIN32
 #include <netdb.h>
@@ -65,15 +69,12 @@
 #include <getopt.h>
 #endif /* #ifndef _MSC_VER */
 
-#include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
 
 #ifndef WIN32
-//#include <unistd.h>
-//#include <sys/ioctl.h>
-//#include <sys/socket.h>
-//#include <sys/param.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/param.h>
 #include <pthread.h>
 
 #ifdef __linux__
@@ -86,7 +87,7 @@
 #include <netinet/in_systm.h>
 #endif /* #ifdef __FreeBSD__ */
 
-#include <syslog.h>
+//TODO #include <syslog.h>
 #include <sys/wait.h>
 
 /*#define ETH_ADDR_LEN 6
@@ -112,12 +113,9 @@ struct ether_hdr
 #include <sys/types.h>
 #include <unistd.h>
 
-#define closesocket(a) close(a)
 #endif /* #ifndef WIN32 */
 
-#include <string.h>
 
-#include <stdarg.h>
 
 #ifdef WIN32
 #include "win32/wintap.h"
@@ -126,20 +124,12 @@ struct ether_hdr
 #include "n2n_list.h"
 #include "n2n_wire.h"
 
-/* N2N_IFNAMSIZ is needed on win32 even if dev_name is not used after declaration */
-#define N2N_IFNAMSIZ            16 /* 15 chars * NULL */
-#ifndef WIN32
-typedef struct tuntap_dev {
-  int           fd;
-  uint8_t       mac_addr[6];
-  uint32_t      ip_addr, device_mask;
-  uint16_t      mtu;
-  char          dev_name[N2N_IFNAMSIZ];
-} tuntap_dev;
 
-#endif /* #ifndef WIN32 */
-
-#define QUICKLZ               1
+/******************************************************************************
+ *
+ * MESSAGES
+ *
+ */
 
 /* N2N packet header indicators. */
 #define MSG_TYPE_REGISTER               1
@@ -151,91 +141,75 @@ typedef struct tuntap_dev {
 #define MSG_TYPE_REGISTER_SUPER_NAK     7
 #define MSG_TYPE_FEDERATION             8
 
-/* Set N2N_COMPRESSION_ENABLED to 0 to disable lzo1x compression of ethernet
+/* Functions */
+extern char *msg_type2str(uint16_t msg_type);
+
+
+/******************************************************************************
+ *
+ * COMPRESSION
+ *
+ */
+
+#define QUICKLZ                     1
+
+/* Set N2N_COMPRESSION_ENABLED to 0 to disable lzo1x compression of Ethernet
  * frames. Doing this will break compatibility with the standard n2n packet
  * format so do it only for experimentation. All edges must be built with the
  * same value if they are to understand each other. */
-#define N2N_COMPRESSION_ENABLED 1
+#define N2N_COMPRESSION_ENABLED     1
 
 
+/******************************************************************************
+ *
+ * SUPERNODE INFORMATION
+ *
+ */
 
-struct peer_info {
-    struct n2n_list     list;
+#define SUPERNODE_IP                "127.0.0.1"
+#define SUPERNODE_PORT              1234
+
+
+/******************************************************************************
+ *
+ * PEER INFORMATION
+ *
+ */
+
+struct peer_info
+{
+    n2n_list_node_t     list;
     n2n_community_t     community_name;
     n2n_mac_t           mac_addr;
     n2n_sock_t          sock;
     time_t              last_seen;
 };
 
-struct n2n_edge; /* defined in edge.c */
-typedef struct n2n_edge         n2n_edge_t;
-
-
-/* ************************************** */
-
-#define TRACE_ERROR     0, __FILE__, __LINE__
-#define TRACE_WARNING   1, __FILE__, __LINE__
-#define TRACE_NORMAL    2, __FILE__, __LINE__
-#define TRACE_INFO      3, __FILE__, __LINE__
-#define TRACE_DEBUG     4, __FILE__, __LINE__
-
-/* ************************************** */
-
-#define traceError(...)    traceEvent(TRACE_ERROR,   __VA_ARGS__)
-#define traceWarning(...)  traceEvent(TRACE_WARNING, __VA_ARGS__)
-#define traceNormal(...)   traceEvent(TRACE_NORMAL,  __VA_ARGS__)
-#define traceInfo(...)     traceEvent(TRACE_INFO,    __VA_ARGS__)
-#define traceDebug(...)    traceEvent(TRACE_DEBUG,   __VA_ARGS__)
-
-
-/* ************************************** */
-
-#define SUPERNODE_IP    "127.0.0.1"
-#define SUPERNODE_PORT  1234
-
-/* ************************************** */
-
-#ifndef max
-#define max(a, b) ((a < b) ? b : a)
-#endif
-
-#ifndef min
-#define min(a, b) ((a > b) ? b : a)
-#endif
-
-/* ************************************** */
-
-/* Variables */
-/* extern TWOFISH *tf; */
-extern int traceLevel;
-extern int useSyslog;
-
-/* Functions */
-extern void traceEvent(int eventTraceLevel, char *file, int line, char *format, ...);
-extern int  tuntap_open(tuntap_dev *device, char *dev, const char *address_mode, char *device_ip, 
-                        char *device_mask, const char *device_mac, int mtu);
-extern int  tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len);
-extern int  tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len);
-extern void tuntap_close(struct tuntap_dev *tuntap);
-extern void tuntap_get_address(struct tuntap_dev *tuntap);
-
-extern char *msg_type2str(uint16_t msg_type);
-extern void hexdump(const uint8_t *buf, size_t len);
-
-void print_n2n_version();
+typedef struct peer_info peer_info_t;
 
 
 /* Operations on peer_info lists. */
-struct peer_info *find_peer_by_mac(struct n2n_list *list,
-                                   const n2n_mac_t mac);
-void   peer_list_add(struct n2n_list *list,
-                     struct peer_info *new);
-size_t purge_peer_list(struct n2n_list *peer_list,
-                       time_t purge_before);
-size_t purge_expired_registrations(struct n2n_list *peer_list);
+void   peer_list_add(n2n_list_head_t *peers, peer_info_t *info);
+size_t purge_peer_list(n2n_list_head_t *peers, time_t purge_before);
+size_t purge_expired_registrations(n2n_list_head_t *peers);
 
+/* Search functions */
+peer_info_t *find_peer_by_mac(n2n_list_head_t *peers, const n2n_mac_t mac);
+peer_info_t *find_peer_by_mac_for_removal(n2n_list_head_t *peers, const n2n_mac_t mac,
+                                          peer_info_t **prev);
+
+
+/******************************************************************************
+ *
+ * N2N VERSION
+ *
+ */
 
 /* version.c */
 extern char *n2n_sw_version, *n2n_sw_osName, *n2n_sw_buildDate;
+
+
+void print_n2n_version();
+
 
 #endif /* _N2N_H_ */
