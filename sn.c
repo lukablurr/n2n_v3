@@ -7,52 +7,13 @@
  *    Struan Bartlett
  */
 
-
+#include "sn.h"
 #include "n2n.h"
+#include "n2n_log.h"
 
 #ifdef N2N_MULTIPLE_SUPERNODES
 #include "sn_multiple.h"
 #endif
-
-#define N2N_SN_LPORT_DEFAULT 7654
-#define N2N_SN_PKTBUF_SIZE   2048
-
-#define N2N_SN_MGMT_PORT                5645
-
-
-struct sn_stats
-{
-    size_t errors;              /* Number of errors encountered. */
-    size_t reg_super;           /* Number of REGISTER_SUPER requests received. */
-    size_t reg_super_nak;       /* Number of REGISTER_SUPER requests declined. */
-    size_t fwd;                 /* Number of messages forwarded. */
-    size_t broadcast;           /* Number of messages broadcast to a community. */
-    time_t last_fwd;            /* Time when last message was forwarded. */
-    time_t last_reg_super;      /* Time when last REGISTER_SUPER was received. */
-};
-
-typedef struct sn_stats sn_stats_t;
-
-struct n2n_sn
-{
-    time_t              start_time;     /* Used to measure uptime. */
-    sn_stats_t          stats;
-    int                 daemon;         /* If non-zero then daemonise. */
-    uint16_t            lport;          /* Local UDP port to bind to. */
-    int                 sock;           /* Main socket for UDP traffic with edges. */
-    int                 mgmt_sock;      /* management socket. */
-#ifdef N2N_MULTIPLE_SUPERNODES
-    uint8_t             snm_discovery_state;
-    int                 sn_port;
-    int                 sn_sock;        /* multiple supernodes socket */
-    unsigned int        seq_num;        /* sequence number for SN communication */
-    sn_list_t           supernodes;
-    comm_list_t         communities;
-#endif
-    struct n2n_list     edges;          /* Link list of registered edges. */
-};
-
-typedef struct n2n_sn n2n_sn_t;
 
 
 static int try_forward(n2n_sn_t *sss,
@@ -81,7 +42,7 @@ static int init_sn(n2n_sn_t *sss)
     sss->lport = N2N_SN_LPORT_DEFAULT;
     sss->sock = -1;
     sss->mgmt_sock = -1;
-    list_init(&sss->edges);
+    list_head_init(&sss->edges);
 
 #ifdef N2N_MULTIPLE_SUPERNODES
     sss->snm_discovery_state = N2N_SNM_STATE_DISCOVERY;
@@ -264,7 +225,7 @@ static int try_broadcast(n2n_sn_t *sss,
 
     traceDebug("try_broadcast");
 
-    N2N_LIST_FOR_EACH_ENTRY(scan, &sss->edges)
+    N2N_LIST_FOR_EACH(&sss->edges, scan)
     {
         if ((0 == memcmp(scan->community_name, cmn->community, sizeof(n2n_community_t))) &&
             (0 != memcmp(srcMac, scan->mac_addr, sizeof(n2n_mac_t))))
@@ -950,92 +911,14 @@ static int process_udp(n2n_sn_t *sss,
 }
 
 
-/** Help message to print if the command line arguments are not valid. */
-static void exit_help(int argc, char * const argv[])
-{
-    fprintf(stderr, "%s usage\n", argv[0]);
-    fprintf(stderr, "-l <lport>\tSet UDP main listen port to <lport>\n");
+/******************************************************************************/
 
-#ifdef N2N_MULTIPLE_SUPERNODES
-    fprintf(stderr, "-s <snm_port>\tSet SNM listen port to <snm_port>\n");
-    fprintf(stderr, "-i <ip:port>\tSet running SNM supernode to <ip:port>\n");
-#endif
+
+static int start_sn(n2n_sn_t *sss)
+{
 
 #if defined(N2N_HAVE_DAEMON)
-    fprintf(stderr, "-f        \tRun in foreground.\n");
-#endif /* #if defined(N2N_HAVE_DAEMON) */
-    fprintf(stderr, "-v        \tIncrease verbosity. Can be used multiple times.\n");
-    fprintf(stderr, "-h        \tThis help message.\n");
-    fprintf(stderr, "\n");
-    exit(1);
-}
-
-static int run_loop(n2n_sn_t *sss);
-
-/* *********************************************** */
-
-static const struct option long_options[] = {
-  { "foreground",      no_argument,       NULL, 'f' },
-  { "local-port",      required_argument, NULL, 'l' },
-#ifdef N2N_MULTIPLE_SUPERNODES
-  { "sn-port",         required_argument, NULL, 's' },
-  { "supernode",       required_argument, NULL, 'i' },
-#endif
-  { "help"   ,         no_argument,       NULL, 'h' },
-  { "verbose",         no_argument,       NULL, 'v' },
-  { NULL,              0,                 NULL,  0  }
-};
-
-/** Main program entry point from kernel. */
-int main(int argc, char * const argv[])
-{
-    n2n_sn_t sss;
-
-    init_sn(&sss);
-
-    {
-        int opt;
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-        const char *optstring = "fl:s:i:vh";
-#else
-        const char *optstring = "fl:vh";
-#endif
-
-        while ((opt = getopt_long(argc, argv, optstring, long_options, NULL)) != -1)
-        {
-            switch (opt)
-            {
-            case 'l': /* local-port */
-                sss.lport = atoi(optarg);
-                break;
-#ifdef N2N_MULTIPLE_SUPERNODES
-            case 's':
-                sss.sn_port = atoi(optarg);
-                break;
-            case 'i':
-            {
-                n2n_sock_t sn;
-                sock_from_cstr(&sn, optarg);
-                update_supernodes(&sss.supernodes, &sn);
-                break;
-            }
-#endif
-            case 'f': /* foreground */
-                sss.daemon = 0;
-                break;
-            case 'h': /* help */
-                exit_help(argc, argv);
-                break;
-            case 'v': /* verbose */
-                ++traceLevel;
-                break;
-            }
-        }
-    }
-
-#if defined(N2N_HAVE_DAEMON)
-    if (sss.daemon)
+    if (sss->daemon)
     {
         useSyslog = 1; /* traceEvent output now goes to syslog. */
         if (-1 == daemon(0, 0))
@@ -1048,19 +931,19 @@ int main(int argc, char * const argv[])
 
     traceDebug("traceLevel is %d", traceLevel);
 
-    sss.sock = open_socket(sss.lport, 1 /*bind ANY*/);
-    if (-1 == sss.sock)
+    sss->sock = open_socket(sss->lport, 1 /*bind ANY*/);
+    if (-1 == sss->sock)
     {
         traceError("Failed to open main socket. %s", strerror(errno));
         exit(-2);
     }
     else
     {
-        traceNormal("supernode is listening on UDP %u (main)", sss.lport);
+        traceNormal("supernode is listening on UDP %u (main)", sss->lport);
     }
 
-    sss.mgmt_sock = open_socket(N2N_SN_MGMT_PORT, 0 /* bind LOOPBACK */);
-    if (-1 == sss.mgmt_sock)
+    sss->mgmt_sock = open_socket(N2N_SN_MGMT_PORT, 0 /* bind LOOPBACK */);
+    if (-1 == sss->mgmt_sock)
     {
         traceError("Failed to open management socket. %s", strerror(errno));
         exit(-2);
@@ -1077,7 +960,7 @@ int main(int argc, char * const argv[])
         exit(-2);
     }
 
-    sss.sn_sock = open_socket(sss.sn_port, 1 /* bind ANY */ );
+    sss.sn_sock = open_socket(sss->sn_port, 1 /* bind ANY */ );
     if (-1 == sss.sn_sock)
     {
         traceError("Failed to open supernodes communication socket. %s", strerror(errno));
@@ -1086,13 +969,12 @@ int main(int argc, char * const argv[])
 
     traceNormal("supernode is listening on UDP %u (supernodes communication)", sss.sn_port);
 
-    send_req_to_all_supernodes(&sss, (sss.snm_discovery_state != N2N_SNM_STATE_READY), NULL, 0);
+    send_req_to_all_supernodes(&sss, (sss->snm_discovery_state != N2N_SNM_STATE_READY), NULL, 0);
 
 #endif /* #ifdef N2N_MULTIPLE_SUPERNODES */
 
     traceNormal("supernode started");
-
-    return run_loop(&sss);
+    return 0;
 }
 
 
@@ -1218,4 +1100,121 @@ static int run_loop(n2n_sn_t *sss)
 
     return 0;
 }
+
+
+/******************************************************************************
+ *
+ * COMMAND LINE ARGUMENTS
+ *
+ */
+
+static const struct option long_options[] = {
+  { "foreground",      no_argument,       NULL, 'f' },
+  { "local-port",      required_argument, NULL, 'l' },
+#ifdef N2N_MULTIPLE_SUPERNODES
+  { "sn-port",         required_argument, NULL, 's' },
+  { "supernode",       required_argument, NULL, 'i' },
+#endif
+  { "help"   ,         no_argument,       NULL, 'h' },
+  { "verbose",         no_argument,       NULL, 'v' },
+  { NULL,              0,                 NULL,  0  }
+};
+
+
+/**
+ * Help message to print if the command line arguments are not valid.
+ */
+static void help(int argc, char * const argv[])
+{
+    fprintf(stderr, "%s usage\n", argv[0]);
+    fprintf(stderr, "-l <lport>\tSet UDP main listen port to <lport>\n");
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    fprintf(stderr, "-s <snm_port>\tSet SNM listen port to <snm_port>\n");
+    fprintf(stderr, "-i <ip:port>\tSet running SNM supernode to <ip:port>\n");
+#endif
+
+#if defined(N2N_HAVE_DAEMON)
+    fprintf(stderr, "-f        \tRun in foreground.\n");
+#endif /* #if defined(N2N_HAVE_DAEMON) */
+    fprintf(stderr, "-v        \tIncrease verbosity. Can be used multiple times.\n");
+    fprintf(stderr, "-h        \tThis help message.\n");
+    fprintf(stderr, "\n");
+    exit(1);
+}
+
+
+static void read_args(int argc, char *argv[], n2n_sn_t *sss)
+{
+    int opt;
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    const char *optstring = "fl:s:i:vh";
+#else
+    const char *optstring = "fl:vh";
+#endif
+
+    while ((opt = getopt_long(argc, argv, optstring, long_options, NULL)) != -1)
+    {
+        switch (opt)
+        {
+        case 'l': /* local-port */
+        {
+            sss->lport = atoi(optarg);
+            break;
+        }
+#ifdef N2N_MULTIPLE_SUPERNODES
+        case 's':
+            sss->sn_port = atoi(optarg);
+            break;
+        case 'i':
+        {
+            n2n_sock_t sn;
+            sock_from_cstr(&sn, optarg);
+            update_supernodes(&sss->supernodes, &sn);
+            break;
+        }
+#endif
+
+        /* Miscellaneous parameters */
+
+        case 'f': /* foreground */
+        {
+            sss->daemon = 0;
+            break;
+        }
+        case 'v': /* verbose */
+        {
+            ++traceLevel;
+            break;
+        }
+        case 'h': /* help */
+        {
+            help(argc, argv);
+            break;
+        }
+        }
+    }
+}
+
+
+/**
+ * Main program entry point from kernel.
+ */
+int main(int argc, char * const argv[])
+{
+    n2n_sn_t sss;
+    init_sn(&sss);
+
+    read_args(argc, argv, &sss);
+
+    if (start_sn(&sss) != 0)
+    {
+        traceError("Failed in start_sn");
+        exit(1);
+    }
+
+    return run_loop(&sss);
+}
+
 
