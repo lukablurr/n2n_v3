@@ -23,48 +23,26 @@
  *
  */
 
+#include "edge.h"
+#include "edge_mgmt.h"
 #include "n2n.h"
 #include "n2n_transforms.h"
-#include "n2n_net.h"
+#include "n2n_log.h"
+#include "n2n_utils.h"
+#include "tuntap.h"
 #include <assert.h>
-#include <sys/stat.h>
+//TODO #include <sys/stat.h>
 #include "minilzo.h"
+
 #ifdef N2N_MULTIPLE_SUPERNODES
 #include "sn_multiple.h"
 #endif
 
-#if defined(DEBUG)
-#define SOCKET_TIMEOUT_INTERVAL_SECS    5
-#define REGISTER_SUPER_INTERVAL_DFL     20 /* sec */
-#else  /* #if defined(DEBUG) */
-#define SOCKET_TIMEOUT_INTERVAL_SECS    10
-#define REGISTER_SUPER_INTERVAL_DFL     60 /* sec */
-#endif /* #if defined(DEBUG) */
 
-#define REGISTER_SUPER_INTERVAL_MIN     20   /* sec */
-#define REGISTER_SUPER_INTERVAL_MAX     3600 /* sec */
+//TODO
 
-#define IFACE_UPDATE_INTERVAL           (30) /* sec. How long it usually takes to get an IP lease. */
-#define TRANSOP_TICK_INTERVAL           (10) /* sec */
-
-/** maximum length of command line arguments */
-#define MAX_CMDLINE_BUFFER_LENGTH    4096
-
-/** maximum length of a line in the configuration file */
-#define MAX_CONFFILE_LINE_LENGTH        1024
-
-#define N2N_PATHNAME_MAXLEN             256
-#define N2N_MAX_TRANSFORMS              16
-#define N2N_EDGE_MGMT_PORT              5644
-
-/** Positions in the transop array where various transforms are stored.
- *
- *  Used by transop_enum_to_index(). See also the transform enumerations in
- *  n2n_transforms.h */
-#define N2N_TRANSOP_NULL_IDX    0
-#define N2N_TRANSOP_TF_IDX      1
-#define N2N_TRANSOP_AESCBC_IDX  2
-/* etc. */
+#define N2N_DEFAULT_IFACE       "edge0"
+#define DEFAULT_NET_MASK        "255.255.255.0"
 
 
 
@@ -79,70 +57,10 @@
 
 /* ******************************************************* */
 
-#define N2N_EDGE_SN_HOST_SIZE 48
-
-typedef char n2n_sn_name_t[N2N_EDGE_SN_HOST_SIZE];
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    #define N2N_EDGE_NUM_SUPERNODES           N2N_MAX_SN_PER_COMM
-#else
-    #define N2N_EDGE_NUM_SUPERNODES 2
-#endif
-#define N2N_EDGE_SUP_ATTEMPTS   3       /* Number of failed attmpts before moving on to next supernode. */
 
 
-/** Main structure type for edge. */
-struct n2n_edge
-{
-    int                 daemon;                 /**< Non-zero if edge should detach and run in the background. */
-    uint8_t             re_resolve_supernode_ip;
 
-    n2n_sock_t          supernode;
 
-    size_t              sn_idx;                 /**< Currently active supernode. */
-    size_t              sn_num;                 /**< Number of supernode addresses defined. */
-    n2n_sn_name_t       sn_ip_array[N2N_EDGE_NUM_SUPERNODES];
-    int                 sn_wait;                /**< Whether we are waiting for a supernode response. */
-
-    n2n_community_t     community_name;         /**< The community. 16 full octets. */
-    char                keyschedule[N2N_PATHNAME_MAXLEN];
-    int                 null_transop;           /**< Only allowed if no key sources defined. */
-
-    int                 udp_sock;
-    int                 udp_mgmt_sock;          /**< socket for status info. */
-
-    tuntap_dev          device;                 /**< All about the TUNTAP device */
-    int                 dyn_ip_mode;            /**< Interface IP address is dynamically allocated, eg. DHCP. */
-    int                 allow_routing;          /**< Accept packet no to interface address. */
-    int                 drop_multicast;         /**< Multicast ethernet addresses. */
-
-    n2n_trans_op_t      transop[N2N_MAX_TRANSFORMS]; /* one for each transform at fixed positions */
-    size_t              tx_transop_idx;         /**< The transop to use when encoding. */
-
-    struct n2n_list     known_peers;            /**< Edges we are connected to. */
-    struct n2n_list     pending_peers;          /**< Edges we have tried to register with. */
-    time_t              last_register_req;      /**< Check if time to re-register with super*/
-    size_t              register_lifetime;      /**< Time distance after last_register_req at which to re-register. */
-    time_t              last_p2p;               /**< Last time p2p traffic was received. */
-    time_t              last_sup;               /**< Last time a packet arrived from supernode. */
-    size_t              sup_attempts;           /**< Number of remaining attempts to this supernode. */
-    n2n_cookie_t        last_cookie;            /**< Cookie sent in last REGISTER_SUPER. */
-
-    time_t              start_time;             /**< For calculating uptime */
-
-    /* Statistics */
-    size_t              tx_p2p;
-    size_t              rx_p2p;
-    size_t              tx_sup;
-    size_t              rx_sup;
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    uint8_t             snm_discovery_state;
-    int                 snm_sock;
-    sn_list_t           supernodes;
-    struct sn_info      reg_sn;
-#endif
-};
 
 /** Return the IP address of the current supernode in the ring. */
 static const char *supernode_ip(const n2n_edge_t *eee)
@@ -150,163 +68,17 @@ static const char *supernode_ip(const n2n_edge_t *eee)
     return (eee->sn_ip_array)[eee->sn_idx];
 }
 
-static void supernode2addr(n2n_sock_t *sn, const n2n_sn_name_t addr);
 
 static void send_packet2net(n2n_edge_t *eee,
 	        uint8_t *decrypted_msg, size_t len);
 
 
-/* ************************************** */
-
-/* parse the configuration file */
-static int readConfFile(const char *filename, char * const linebuffer)
-{
-    struct stat stats;
-    FILE *fd;
-    char *buffer = NULL;
-
-    buffer = (char *) malloc(MAX_CONFFILE_LINE_LENGTH);
-    if (!buffer)
-    {
-        traceError("Unable to allocate memory");
-        return -1;
-    }
-
-    if (stat(filename, &stats))
-    {
-        if (errno == ENOENT)
-            traceError("parameter file %s not found/unable to access\n", filename);
-        else
-            traceError("cannot stat file %s, errno=%d\n", filename, errno);
-        free(buffer);
-        return -1;
-    }
-
-    fd = fopen(filename, "rb");
-    if (!fd)
-    {
-        traceError("Unable to open parameter file '%s' (%d)...\n", filename, errno);
-        free(buffer);
-        return -1;
-    }
-    while (fgets(buffer, MAX_CONFFILE_LINE_LENGTH, fd))
-    {
-        char *p = NULL;
-
-        /* strip out comments */
-        p = strchr(buffer, '#');
-        if (p)
-            *p = '\0';
-
-        /* remove \n */
-        p = strchr(buffer, '\n');
-        if (p)
-            *p = '\0';
-
-        /* strip out heading spaces */
-        p = buffer;
-        while (*p == ' ' && *p != '\0')
-            ++p;
-        if (p != buffer)
-            strncpy(buffer, p, strlen(p) + 1);
-
-        /* strip out trailing spaces */
-        while (strlen(buffer) && buffer[strlen(buffer) - 1] == ' ')
-            buffer[strlen(buffer) - 1] = '\0';
-
-        /* check for nested @file option */
-        if (strchr(buffer, '@'))
-        {
-            traceError("@file in file nesting is not supported\n");
-            free(buffer);
-            return -1;
-        }
-        if ((strlen(linebuffer) + strlen(buffer) + 2) < MAX_CMDLINE_BUFFER_LENGTH)
-        {
-            strncat(linebuffer, " ", 1);
-            strncat(linebuffer, buffer, strlen(buffer));
-        }
-        else
-        {
-            traceError("too many argument");
-            free(buffer);
-            return -1;
-        }
-    }
-
-    free(buffer);
-    fclose(fd);
-
-    return 0;
-}
-
-/* Create the argv vector */
-static char **buildargv(int *effectiveargc, char * const linebuffer)
-{
-    const int INITIAL_MAXARGC = 16; /* Number of args + NULL in initial argv */
-    int maxargc;
-    int argc = 0;
-    char **argv;
-    char *buffer, *buff;
-
-    *effectiveargc = 0;
-    buffer = (char *) calloc(1, strlen(linebuffer) + 2);
-    if (!buffer)
-    {
-        traceError("Unable to allocate memory");
-        return NULL;
-    }
-    strncpy(buffer, linebuffer, strlen(linebuffer));
-
-    maxargc = INITIAL_MAXARGC;
-    argv = (char **) malloc(maxargc * sizeof(char*));
-    if (argv == NULL)
-    {
-        traceError("Unable to allocate memory");
-        return NULL;
-    }
-    buff = buffer;
-    while (buff)
-    {
-        char *p = strchr(buff, ' ');
-        if (p)
-        {
-            *p = '\0';
-            argv[argc++] = strdup(buff);
-            while (*++p == ' ' && *p != '\0')
-                ;
-            buff = p;
-            if (argc >= maxargc)
-            {
-                maxargc *= 2;
-                argv = (char **) realloc(argv, maxargc * sizeof(char*));
-                if (argv == NULL)
-                {
-                    traceError("Unable to re-allocate memory");
-                    free(buffer);
-                    return NULL;
-                }
-            }
-        }
-        else
-        {
-            argv[argc++] = strdup(buff);
-            break;
-        }
-    }
-    free(buffer);
-    *effectiveargc = argc;
-    return argv;
-}
+/******************************************************************************/
 
 
-
-/* ************************************** */
-
-
-/** Initialise an edge to defaults.
+/** Initialize an edge to defaults.
  *
- *  This also initialises the NULL transform operation opstruct.
+ *  This also initializes the NULL transform operation opstruct.
  */
 static int edge_init(n2n_edge_t *eee)
 {
@@ -330,10 +102,11 @@ static int edge_init(n2n_edge_t *eee)
     eee->udp_sock            = -1;
     eee->udp_mgmt_sock       = -1;
     eee->dyn_ip_mode         = 0;
+    eee->ip_mode         = N2N_IPM_STATIC;
     eee->allow_routing       = 0;
     eee->drop_multicast      = 1;
-    list_init(&eee->known_peers);
-    list_init(&eee->pending_peers);
+    list_head_init(&eee->known_peers);
+    list_head_init(&eee->pending_peers);
     eee->last_register_req   = 0;
     eee->register_lifetime   = REGISTER_SUPER_INTERVAL_DFL;
     eee->last_p2p            = 0;
@@ -352,6 +125,27 @@ static int edge_init(n2n_edge_t *eee)
     memset(&eee->supernodes, 0, sizeof(sn_list_t));
 #endif
 
+    //TODO
+    memset(&(eee->supernode), 0, sizeof(eee->supernode));
+    eee->supernode.family = AF_INET;
+
+    //TODO
+
+#ifndef WIN32
+    /* Device name matters on non-Windows environments */
+    strcpy(eee->device.dev_name, N2N_DEFAULT_IFACE);
+#endif
+    eee->device.device_mask = inet_addr("255.255.255.0");//TODO
+    eee->device.mtu = DEFAULT_MTU;
+
+    /*
+    // TUNTAP: tuntap_dev_name, ip_mode, ip_addr, netmask, device_mac, mtu
+    //char    tuntap_dev_name[N2N_IFNAMSIZ] = "edge0";
+    char    ip_mode[N2N_IF_MODE_SIZE] = "static";
+    char    ip_addr[N2N_NETMASK_STR_SIZE] = "";
+    char    netmask[N2N_NETMASK_STR_SIZE] = "255.255.255.0";
+    //int     mtu = DEFAULT_MTU;
+*/
     return (0);
 }
 
@@ -364,8 +158,8 @@ static int edge_init_twofish(n2n_edge_t *eee, uint8_t *encrypt_pwd, uint32_t enc
 }
 
 
-/** Find the transop op-struct for the transform enumeration required.
- *
+/**
+ * Find the transop op-struct for the transform enumeration required.
  * @return - index into the transop array, or -1 on failure.
  */
 static int transop_enum_to_index(n2n_transform_t id)
@@ -387,8 +181,30 @@ static int transop_enum_to_index(n2n_transform_t id)
 }
 
 
-/** Called periodically to roll keys and do any periodic maintenance in the
- *  tranform operations state machines. */
+/**
+ * Choose the transop for Tx. This should be based on the newest valid
+ * cipherspec in the key schedule.
+ *
+ * Never fall back to NULL transform unless no key sources were specified. It is
+ * better to render edge inoperative than to expose user data in the clear. In
+ * the case where all SAs are expired an arbitrary transform will be chosen for
+ * Tx. It will fail having no valid SAs but one must be selected.
+ */
+static size_t edge_choose_tx_transop(const n2n_edge_t *eee)//TODO make inline
+{
+    if (eee->null_transop)
+    {
+        return N2N_TRANSOP_NULL_IDX;
+    }
+
+    return eee->tx_transop_idx;
+}
+
+
+/**
+ * Called periodically to roll keys and do any periodic maintenance in the
+ * transform operations state machines.
+ */
 static int n2n_tick_transop(n2n_edge_t *eee, time_t now)
 {
     n2n_tostat_t tst;
@@ -422,13 +238,15 @@ static int n2n_tick_transop(n2n_edge_t *eee, time_t now)
 
 
 
-/** Read in a key-schedule file, parse the lines and pass each line to the
- *  appropriate trans_op for parsing of key-data and adding key-schedule
- *  entries. The lookup table of time->trans_op is constructed such that
- *  encoding can be passed to the correct trans_op. The trans_op internal table
- *  will then determine the best SA for that trans_op from the key schedule to
- *  use for encoding. */
-static int edge_init_keyschedule(n2n_edge_t *eee)
+/**
+ * Read in a key-schedule file, parse the lines and pass each line to the
+ * appropriate trans_op for parsing of key-data and adding key-schedule
+ * entries. The lookup table of time->trans_op is constructed such that
+ * encoding can be passed to the correct trans_op. The trans_op internal table
+ * will then determine the best SA for that trans_op from the key schedule to
+ * use for encoding.
+ */
+/* TODO static*/ int edge_init_keyschedule(n2n_edge_t *eee)
 {
 
 #define N2N_NUM_CIPHERSPECS 32
@@ -485,7 +303,9 @@ static int edge_init_keyschedule(n2n_edge_t *eee)
 }
 
 
-/** Deinitialise the edge and deallocate any owned memory. */
+/**
+ * Deinitialize the edge and deallocate any owned memory.
+ */
 static void edge_deinit(n2n_edge_t *eee)
 {
     if (eee->udp_sock >= 0)
@@ -515,104 +335,17 @@ static void edge_deinit(n2n_edge_t *eee)
 #endif
 }
 
-static void readFromIPSocket(n2n_edge_t *eee);
 
-static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running);
+/******************************************************************************
+ *
+ * EDGE <-> SUPERNODE COMMUNICATION
+ *
+ */
 
-static void help()
-{
-    print_n2n_version();
-
-    printf("edge "
-#if defined(N2N_CAN_NAME_IFACE)
-	 "-d <tun device> "
-#endif /* #if defined(N2N_CAN_NAME_IFACE) */
-	 "-a [static:|dhcp:]<tun IP address> "
-	 "-c <community> "
-	 "[-k <encrypt key> | -K <key file>] "
-	 "[-s <netmask>] "
-#if defined(N2N_HAVE_SETUID)
-	 "[-u <uid> -g <gid>]"
-#endif /* #ifndef N2N_HAVE_SETUID */
-
-#if defined(N2N_HAVE_DAEMON)
-	 "[-f]"
-#endif /* #if defined(N2N_HAVE_DAEMON) */
-	 "[-m <MAC address>]"
-	 "\n"
-	 "-l <supernode host:port> "
-	 "[-p <local port>] [-M <mtu>] "
-	 "[-r] [-E] [-v] [-t <mgmt port>] [-b] [-h]\n\n");
-
-#ifdef __linux__
-  printf("-d <tun device>          | tun device name\n");
-#endif
-
-  printf("-a <mode:address>        | Set interface address. For DHCP use '-r -a dhcp:0.0.0.0'\n");
-  printf("-c <community>           | n2n community name the edge belongs to.\n");
-  printf("-k <encrypt key>         | Encryption key (ASCII) - also N2N_KEY=<encrypt key>. Not with -K.\n");
-  printf("-K <key file>            | Specify a key schedule file to load. Not with -k.\n");
-  printf("-s <netmask>             | Edge interface netmask in dotted decimal notation (255.255.255.0).\n");
-  printf("-l <supernode host:port> | Supernode IP:port\n");
-  printf("-b                       | Periodically resolve supernode IP\n");
-  printf("                         : (when supernodes are running on dynamic IPs)\n");
-  printf("-p <local port>          | Fixed local UDP port.\n");
-#ifndef WIN32
-  printf("-u <UID>                 | User ID (numeric) to use when privileges are dropped.\n");
-  printf("-g <GID>                 | Group ID (numeric) to use when privileges are dropped.\n");
-#endif /* ifndef WIN32 */
-#ifdef N2N_HAVE_DAEMON
-  printf("-f                       | Do not fork and run as a daemon; rather run in foreground.\n");
-#endif /* #ifdef N2N_HAVE_DAEMON */
-  printf("-m <MAC address>         | Fix MAC address for the TAP interface (otherwise it may be random)\n"
-         "                         : eg. -m 01:02:03:04:05:06\n");
-  printf("-M <mtu>                 | Specify n2n MTU of edge interface (default %d).\n", DEFAULT_MTU);
-  printf("-r                       | Enable packet forwarding through n2n community.\n");
-  printf("-E                       | Accept multicast MAC addresses (default=drop).\n");
-  printf("-v                       | Make more verbose. Repeat as required.\n");
-  printf("-t                       | Management UDP Port (for multiple edges on a machine).\n");
-
-    printf("\nEnvironment variables:\n");
-    printf("  N2N_KEY                | Encryption key (ASCII). Not with -K or -k.\n" );
-
-    exit(0);
-}
-
-
-
-/** Send a REGISTER packet to another edge. */
-static void send_register(n2n_edge_t *eee, 
-                          const n2n_sock_t *remote_peer)
-{
-    uint8_t pktbuf[N2N_PKT_BUF_SIZE];
-    size_t idx;
-    ssize_t sent;
-    n2n_common_t cmn;
-    n2n_REGISTER_t reg;
-    n2n_sock_str_t sockbuf;
-
-    init_cmn(&cmn, n2n_register, 0, eee->community_name);
-    memset(&reg, 0, sizeof(reg));
-
-    idx = 0;
-    encode_uint32(reg.cookie, &idx, 123456789);
-    idx = 0;
-    encode_mac(reg.srcMac, &idx, eee->device.mac_addr);
-
-    idx = 0;
-    encode_REGISTER(pktbuf, &idx, &cmn, &reg);
-
-    traceInfo("send REGISTER %s", 
-               sock_to_cstr(sockbuf, remote_peer));
-
-    sent = sendto_sock(eee->udp_sock, pktbuf, idx, remote_peer);
-
-}
-
-
-/** Send a REGISTER_SUPER packet to the current supernode. */
-static void send_register_super(n2n_edge_t *eee,
-                                const n2n_sock_t *supernode)
+/**
+ * Send a REGISTER_SUPER packet to the current supernode.
+ */
+static void send_register_super(n2n_edge_t *eee, const n2n_sock_t *supernode)
 {
     uint8_t pktbuf[N2N_PKT_BUF_SIZE];
     size_t idx;
@@ -638,15 +371,130 @@ static void send_register_super(n2n_edge_t *eee,
     idx = 0;
     encode_REGISTER_SUPER(pktbuf, &idx, &cmn, &reg);
 
-    traceInfo("send REGISTER_SUPER to %s",
-        sock_to_cstr(sockbuf, supernode));
+    traceInfo("send REGISTER_SUPER to %s", sock_to_cstr(sockbuf, supernode));
 
     sent = sendto_sock(eee->udp_sock, pktbuf, idx, supernode);
 
 }
 
 
-/** Send a REGISTER_ACK packet to a peer edge. */
+/**
+ * @brief Check to see if we should re-register with the supernode.
+ *
+ *  This is frequently called by the main loop.
+ */
+static void update_supernode_reg(n2n_edge_t *eee, time_t nowTime)
+{
+    if (eee->sn_wait && (nowTime > (eee->last_register_req + (eee->register_lifetime / 10))))
+    {
+        /* fall through */
+        traceDebug("update_supernode_reg: doing fast retry.");
+    }
+    else if (nowTime < (eee->last_register_req + eee->register_lifetime))
+    {
+        return; /* Too early */
+    }
+
+    if (0 == eee->sup_attempts)
+    {
+        /* Give up on that supernode and try the next one. */
+        ++(eee->sn_idx);
+
+        if (eee->sn_idx >= eee->sn_num)
+        {
+            /* Got to end of list, go back to the start. Also works for list of one entry. */
+            eee->sn_idx = 0;
+        }
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+        if (eee->reg_sn.timestamp < eee->last_register_req)      /* supernode didn't respond */
+        {
+            if (sn_cmp(&eee->supernode, &eee->reg_sn.sn) == 0)   /* supernode is the main one */
+            {
+                supernode2addr(&(eee->supernode), eee->sn_ip_array[eee->sn_idx]);
+
+                traceWarning("Changed active supernode to %s", eee->sn_ip_array[eee->sn_idx]);
+            }
+#endif
+        traceWarning("Supernode not responding - moving to %u of %u",
+                   (unsigned int)eee->sn_idx, (unsigned int)eee->sn_num );
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+        }
+#endif
+
+        eee->sup_attempts = N2N_EDGE_SUP_ATTEMPTS;
+    }
+    else
+    {
+        --(eee->sup_attempts);
+    }
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    /* setting next supernode to register to */
+    supernode2addr(&(eee->reg_sn.sn), eee->sn_ip_array[eee->sn_idx]);
+    eee->reg_sn.timestamp = 0;
+    send_register_super(eee, &(eee->reg_sn.sn));
+
+#else
+    if (eee->re_resolve_supernode_ip || (eee->sn_num > 1))
+    {
+        //TODO supernode2addr(&(eee->supernode), eee->sn_ip_array[eee->sn_idx]);
+        eee->supernode = eee->my_supernodes[eee->sn_idx];
+    }
+
+    send_register_super(eee, &(eee->supernode));
+#endif
+
+    traceDebug("Registering with supernode (%s) (attempts left %u)",
+               supernode_ip(eee), (unsigned int)eee->sup_attempts);
+
+    eee->sn_wait = 1;
+
+    /* REVISIT: turn-on gratuitous ARP with config option. */
+    /* send_grat_arps(sock_fd, is_udp_sock); */
+
+    eee->last_register_req = nowTime;
+}
+
+
+/******************************************************************************
+ *
+ * EDGE <-> EDGE (P2P) COMMUNICATION
+ *
+ */
+
+/**
+ * Send a REGISTER packet to another edge.
+ */
+static void send_register(n2n_edge_t *eee, const n2n_sock_t *remote_peer)
+{
+    uint8_t pktbuf[N2N_PKT_BUF_SIZE];
+    size_t idx;
+    ssize_t sent;
+    n2n_common_t cmn;
+    n2n_REGISTER_t reg;
+    n2n_sock_str_t sockbuf;
+
+    init_cmn(&cmn, n2n_register, 0, eee->community_name);
+    memset(&reg, 0, sizeof(reg));
+
+    idx = 0;
+    encode_uint32(reg.cookie, &idx, 123456789);
+    idx = 0;
+    encode_mac(reg.srcMac, &idx, eee->device.mac_addr);
+
+    idx = 0;
+    encode_REGISTER(pktbuf, &idx, &cmn, &reg);
+
+    traceInfo("send REGISTER %s", sock_to_cstr(sockbuf, remote_peer));
+    sent = sendto_sock(eee->udp_sock, pktbuf, idx, remote_peer);
+}
+
+
+/**
+ * Send a REGISTER_ACK packet to a peer edge.
+ */
 static void send_register_ack(n2n_edge_t            *eee,
                               const n2n_sock_t      *remote_peer,
                               const n2n_REGISTER_t  *reg)
@@ -686,82 +534,176 @@ static void send_deregister(n2n_edge_t *eee,
 }
 
 
-static void update_peer_address(n2n_edge_t *eee,
-                                uint8_t from_supernode,
-                                const n2n_mac_t mac,
-                                const n2n_sock_t *peer,
-                                time_t when);
-void check_peer(n2n_edge_t *eee,
-                uint8_t from_supernode,
-                const n2n_mac_t mac,
-                const n2n_sock_t *peer);
-void try_send_register(n2n_edge_t *eee,
-                       uint8_t from_supernode,
-                       const n2n_mac_t mac,
-                       const n2n_sock_t *peer);
-void set_peer_operational(n2n_edge_t *eee,
-                          const n2n_mac_t mac,
-                          const n2n_sock_t *peer);
-
-
-
-/** Start the registration process.
+/**
+ * Start the registration process.
  *
- *  If the peer is already in pending_peers, ignore the request.
- *  If not in pending_peers, add it and send a REGISTER.
+ * If the peer is already in pending_peers, ignore the request.
+ * If not in pending_peers, add it and send a REGISTER.
  *
- *  If hdr is for a direct peer-to-peer packet, try to register back to sender
- *  even if the MAC is in pending_peers. This is because an incident direct
- *  packet indicates that peer-to-peer exchange should work so more aggressive
- *  registration can be permitted (once per incoming packet) as this should only
- *  last for a small number of packets..
+ * If hdr is for a direct peer-to-peer packet, try to register back to sender
+ * even if the MAC is in pending_peers. This is because an incident direct
+ * packet indicates that peer-to-peer exchange should work so more aggressive
+ * registration can be permitted (once per incoming packet) as this should only
+ * last for a small number of packets..
  *
- *  Called from the main loop when Rx a packet for our device mac.
+ * Called from the main loop when Rx a packet for our device mac.
  */
-void try_send_register(n2n_edge_t *eee,
-                       uint8_t from_supernode,
-                       const n2n_mac_t mac,
-                       const n2n_sock_t *peer)
+static void try_send_register(n2n_edge_t *eee, uint8_t from_supernode,
+                              const n2n_mac_t mac, const n2n_sock_t *peer)
 {
     /* REVISIT: purge of pending_peers not yet done. */
-    struct peer_info *scan = find_peer_by_mac(&eee->pending_peers, mac);
     macstr_t mac_buf;
     n2n_sock_str_t sockbuf;
 
-    if (NULL == scan)
+    struct peer_info *scan = find_peer_by_mac(&eee->pending_peers, mac);
+    if (scan)
+        return;
+
+    scan = calloc(1, sizeof(struct peer_info));
+
+    memcpy(scan->mac_addr, mac, N2N_MAC_SIZE);
+    scan->sock = *peer;
+    scan->last_seen = time(NULL); /* Don't change this it marks the pending peer for removal. */
+
+    peer_list_add(&eee->pending_peers, scan);
+
+    traceDebug("=== new pending %s -> %s",
+               macaddr_str(mac_buf, scan->mac_addr),
+               sock_to_cstr(sockbuf, &(scan->sock)));
+
+    traceInfo("Pending peers list size=%u",
+               (unsigned int) list_size(&eee->pending_peers));
+
+    /* trace Sending REGISTER */
+
+    send_register(eee, &(scan->sock));
+
+    /* pending_peers now owns scan. */
+}
+
+
+/**
+ * Move the peer from the pending_peers list to the known_peers lists.
+ *
+ * peer must be a pointer to an element of the pending_peers list.
+ *
+ * Called by main loop when Rx a REGISTER_ACK.
+ */
+static void set_peer_operational(n2n_edge_t *eee,
+                                 const n2n_mac_t mac, const n2n_sock_t *peer)
+{
+    struct peer_info *prev = NULL;
+    struct peer_info *scan;
+    macstr_t mac_buf;
+    n2n_sock_str_t sockbuf;
+
+    traceInfo("set_peer_operational: %s -> %s",
+              macaddr_str(mac_buf, mac), sock_to_cstr(sockbuf, peer));
+
+    scan = find_peer_by_mac_for_removal(&eee->pending_peers, mac, &prev);
+
+    if (scan == NULL)
     {
-        scan = calloc(1, sizeof(struct peer_info));
+        traceDebug("Failed to find sender in pending_peers.");
+        return;
+    }
 
-        memcpy(scan->mac_addr, mac, N2N_MAC_SIZE);
-        scan->sock = *peer;
-        scan->last_seen = time(NULL); /* Don't change this it marks the pending peer for removal. */
+    /* Remove scan from pending_peers. */
+    if (prev)
+        prev->list.next = scan->list.next;
+    else
+        eee->pending_peers.node.next = scan->list.next;
 
-        peer_list_add(&eee->pending_peers, scan);
+    scan->sock = *peer;
+    scan->last_seen = time(NULL);
 
-        traceDebug("=== new pending %s -> %s",
-                   macaddr_str(mac_buf, scan->mac_addr),
-                   sock_to_cstr(sockbuf, &(scan->sock)));
+    /* Add scan to known_peers. */
+    list_add(&eee->known_peers, &scan->list);
 
-        traceInfo("Pending peers list size=%u",
-                   (unsigned int) list_size(&eee->pending_peers));
+    traceDebug("=== new peer %s -> %s",
+               macaddr_str(mac_buf, scan->mac_addr), sock_to_cstr(sockbuf, peer));
+    traceInfo("Pending peers list size=%u",
+              (unsigned int) list_size(&eee->pending_peers));
+    traceInfo("Operational peers list size=%u",
+              (unsigned int) list_size(&eee->known_peers));
+}
 
-        /* trace Sending REGISTER */
 
-        send_register(eee, &(scan->sock));
+/**
+ * Keep the known_peers list straight.
+ *
+ *  Ignore broadcast L2 packets, and packets with invalid public_ip.
+ *  If the dst_mac is in known_peers make sure the entry is correct:
+ *  - if the public_ip socket has changed, erase the entry
+ *  - if the same, update its last_seen = when
+ */
+static void update_peer_address(n2n_edge_t *eee, uint8_t from_supernode,
+                                const n2n_mac_t mac, const n2n_sock_t *peer,
+                                time_t when)
+{
+    struct peer_info *scan = NULL;
+    struct peer_info *prev = NULL; /* use to remove bad registrations. */
+    n2n_sock_str_t sockbuf1;
+    n2n_sock_str_t sockbuf2; /* don't clobber sockbuf1 if writing two addresses to trace */
+    macstr_t mac_buf;
 
-        /* pending_peers now owns scan. */
+    if (is_empty_ip_address(peer))
+        /* Not to be registered. */
+        return;
+
+    if (is_broadcast_mac(mac))
+        /* Not to be registered. */
+        return;
+
+    scan = find_peer_by_mac_for_removal(&eee->known_peers, mac, &prev);
+
+    if (NULL == scan)
+        /* Not in known_peers. */
+        return;
+
+    if (0 != sock_equal(&scan->sock, peer))
+    {
+        if (0 == from_supernode)
+        {
+            traceNormal("Peer changed %s: %s -> %s",
+                        macaddr_str(mac_buf, scan->mac_addr),
+                        sock_to_cstr(sockbuf1, &scan->sock),
+                        sock_to_cstr(sockbuf2, peer));
+
+            /* The peer has changed public socket. It can no longer
+             * be assumed to be reachable. Remove the peer. */
+            if (NULL == prev)
+            {
+                /* scan was head of list */
+                eee->known_peers.node.next = scan->list.next;
+            }
+            else
+            {
+                prev->list.next = scan->list.next;
+            }
+            free(scan);
+
+            try_send_register(eee, from_supernode, mac, peer);
+        }
+        else
+        {
+            /* Don't worry about what the supernode reports,
+             * it could be seeing a different socket. */
+        }
     }
     else
     {
+        /* Found and unchanged. */
+        scan->last_seen = when;
     }
 }
 
 
-/** Update the last_seen time for this peer, or get registered. */
-void check_peer(n2n_edge_t *eee,
-                uint8_t from_supernode,
-                const n2n_mac_t mac,
-                const n2n_sock_t *peer)
+/**
+ * Update the last_seen time for this peer, or get registered.
+ */
+static void check_peer(n2n_edge_t *eee, uint8_t from_supernode,
+                       const n2n_mac_t mac, const n2n_sock_t *peer)
 {
     struct peer_info *scan = find_peer_by_mac(&eee->known_peers, mac);
 
@@ -778,207 +720,46 @@ void check_peer(n2n_edge_t *eee,
 }
 
 
-/* Move the peer from the pending_peers list to the known_peers lists.
- *
- * peer must be a pointer to an element of the pending_peers list.
- *
- * Called by main loop when Rx a REGISTER_ACK.
+/**
+ * @return 1 if destination is a peer, 0 if destination is supernode
  */
-void set_peer_operational(n2n_edge_t *eee,
-                          const n2n_mac_t mac,
-                          const n2n_sock_t *peer)
+static int find_peer_destination(n2n_edge_t *eee,
+                                 const n2n_mac_t mac, n2n_sock_t *destination)
 {
-    struct peer_info *prev = NULL;
-    struct peer_info *scan;
+    const struct peer_info *scan = NULL;
     macstr_t mac_buf;
     n2n_sock_str_t sockbuf;
+    int retval = 0;
 
-    traceInfo("set_peer_operational: %s -> %s",
-               macaddr_str(mac_buf, mac),
-               sock_to_cstr(sockbuf, peer));
+    traceDebug("Searching destination peer for MAC %02X:%02X:%02X:%02X:%02X:%02X",
+               mac[0] & 0xFF, mac[1] & 0xFF, mac[2] & 0xFF,
+               mac[3] & 0xFF, mac[4] & 0xFF, mac[5] & 0xFF);
 
-    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->pending_peers)
+    N2N_LIST_FOR_EACH(&eee->known_peers, scan)
     {
-        if (0 == memcmp(scan->mac_addr, mac, N2N_MAC_SIZE))
+        traceDebug("Evaluating peer [MAC=%02X:%02X:%02X:%02X:%02X:%02X]",
+                   scan->mac_addr[0] & 0xFF, scan->mac_addr[1] & 0xFF, scan->mac_addr[2] & 0xFF,
+                   scan->mac_addr[3] & 0xFF, scan->mac_addr[4] & 0xFF, scan->mac_addr[5] & 0xFF);
+
+        if ((scan->last_seen > 0) &&
+            (memcmp(mac, scan->mac_addr, N2N_MAC_SIZE) == 0))
         {
-            break; /* found. */
-        }
-
-        prev = scan;
-    }
-
-    if (scan)
-    {
-        /* Remove scan from pending_peers. */
-        if (prev)
-        {
-            prev->list = scan->list;
-        }
-        else
-        {
-            eee->pending_peers = scan->list;
-        }
-
-        /* Add scan to known_peers. */
-        list_add(&eee->known_peers, &scan->list);
-
-        scan->sock = *peer;
-
-        traceDebug("=== new peer %s -> %s",
-                   macaddr_str(mac_buf, scan->mac_addr),
-                   sock_to_cstr(sockbuf, &(scan->sock)));
-
-        traceInfo("Pending peers list size=%u",
-                   (unsigned int) list_size(&eee->pending_peers));
-
-        traceInfo("Operational peers list size=%u",
-                   (unsigned int) list_size(&eee->known_peers));
-
-        scan->last_seen = time(NULL);
-    }
-    else
-    {
-        traceDebug("Failed to find sender in pending_peers.");
-    }
-}
-
-
-
-/** Keep the known_peers list straight.
- *
- *  Ignore broadcast L2 packets, and packets with invalid public_ip.
- *  If the dst_mac is in known_peers make sure the entry is correct:
- *  - if the public_ip socket has changed, erase the entry
- *  - if the same, update its last_seen = when
- */
-static void update_peer_address(n2n_edge_t *eee,
-                                uint8_t from_supernode,
-                                const n2n_mac_t mac,
-                                const n2n_sock_t *peer,
-                                time_t when)
-{
-    struct peer_info *scan = NULL;
-    struct peer_info *prev = NULL; /* use to remove bad registrations. */
-    n2n_sock_str_t sockbuf1;
-    n2n_sock_str_t sockbuf2; /* don't clobber sockbuf1 if writing two addresses to trace */
-    macstr_t mac_buf;
-
-    if (is_empty_ip_address(peer))
-    {
-        /* Not to be registered. */
-        return;
-    }
-
-    if (is_broadcast_mac(mac))
-    {
-        /* Not to be registered. */
-        return;
-    }
-
-    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->known_peers)
-    {
-        if (memcmp(mac, scan->mac_addr, N2N_MAC_SIZE) == 0)
-        {
+            memcpy(destination, &scan->sock, sizeof(n2n_sock_t));
+            retval = 1;
             break;
         }
-
-        prev = scan;
     }
 
-    if (NULL == scan)
+    if (0 == retval)
     {
-        /* Not in known_peers. */
-        return;
+        memcpy(destination, &(eee->supernode), sizeof(struct sockaddr_in));
     }
 
-    if (0 != sock_equal(&(scan->sock), peer))
-    {
-        if (0 == from_supernode)
-        {
-            traceNormal("Peer changed %s: %s -> %s",
-                       macaddr_str(mac_buf, scan->mac_addr),
-                       sock_to_cstr(sockbuf1, &(scan->sock)),
-                       sock_to_cstr(sockbuf2, peer));
+    traceDebug("find_peer_destination (%s) -> [%s]",
+               macaddr_str(mac_buf, mac), sock_to_cstr(sockbuf, destination));
 
-            /* The peer has changed public socket. It can no longer be assumed to be reachable. */
-            /* Remove the peer. */
-            if (NULL == prev)
-            {
-                /* scan was head of list */
-                eee->known_peers = scan->list;
-            }
-            else
-            {
-                prev->list = scan->list;
-            }
-            free(scan);
-
-            try_send_register(eee, from_supernode, mac, peer);
-        }
-        else
-        {
-            /* Don't worry about what the supernode reports, it could be seeing a different socket. */
-        }
-    }
-    else
-    {
-        /* Found and unchanged. */
-        scan->last_seen = when;
-    }
+    return retval;
 }
-
-
-#if defined(DUMMY_ID_00001) /* Disabled waiting for config option to enable it */
-
-
-
-static char gratuitous_arp[] = {
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, /* Dest mac */
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Src mac */
-  0x08, 0x06, /* ARP */
-  0x00, 0x01, /* Ethernet */
-  0x08, 0x00, /* IP */
-  0x06, /* Hw Size */
-  0x04, /* Protocol Size */
-  0x00, 0x01, /* ARP Request */
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Src mac */
-  0x00, 0x00, 0x00, 0x00, /* Src IP */
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Target mac */
-  0x00, 0x00, 0x00, 0x00 /* Target IP */
-};
-
-
-/** Build a gratuitous ARP packet for a /24 layer 3 (IP) network. */
-static int build_gratuitous_arp(char *buffer, uint16_t buffer_len)
-{
-    if (buffer_len < sizeof(gratuitous_arp))
-        return (-1);
-
-    memcpy(buffer, gratuitous_arp, sizeof(gratuitous_arp));
-    memcpy(&buffer[6], device.mac_addr, 6);
-    memcpy(&buffer[22], device.mac_addr, 6);
-    memcpy(&buffer[28], &device.ip_addr, 4);
-
-    /* REVISIT: BbMaj7 - use a real netmask here. This is valid only by accident
-     * for /24 IPv4 networks. */
-    buffer[31] = 0xFF; /* Use a faked broadcast address */
-    memcpy(&buffer[38], &device.ip_addr, 4);
-    return (sizeof(gratuitous_arp));
-}
-
-/** Called from update_supernode_reg to periodically send gratuitous ARP
- *  broadcasts. */
-static void send_grat_arps(n2n_edge_t *eee,)
-{
-    char buffer[48];
-    size_t len;
-
-    traceNormal("Sending gratuitous ARP...");
-    len = build_gratuitous_arp(buffer, sizeof(buffer));
-    send_packet2net(eee, buffer, len);
-    send_packet2net(eee, buffer, len); /* Two is better than one :-) */
-}
-#endif /* #if defined(DUMMY_ID_00001) */
 
 
 #ifdef N2N_MULTIPLE_SUPERNODES
@@ -1311,162 +1092,30 @@ static void readFromSNMSocket(n2n_edge_t *eee)
 #endif // N2N_MULTIPLE_SUPERNODES
 
 
-/** @brief Check to see if we should re-register with the supernode.
+
+/******************************************************************************
  *
- *  This is frequently called by the main loop.
+ * TUNNELING
+ *
  */
-static void update_supernode_reg(n2n_edge_t *eee, time_t nowTime)
+
+/**
+ * Send an encapsulated Ethernet PACKET to a destination edge or broadcast MAC
+ * address.
+ */
+static ssize_t send_PACKET(n2n_edge_t *eee, n2n_mac_t dst_mac,
+                           const uint8_t *pktbuf, size_t pktlen)
 {
-    if (eee->sn_wait && (nowTime > (eee->last_register_req + (eee->register_lifetime / 10))))
-    {
-        /* fall through */
-        traceDebug("update_supernode_reg: doing fast retry.");
-    }
-    else if (nowTime < (eee->last_register_req + eee->register_lifetime))
-    {
-        return; /* Too early */
-    }
-
-    if (0 == eee->sup_attempts)
-    {
-        /* Give up on that supernode and try the next one. */
-        ++(eee->sn_idx);
-
-        if (eee->sn_idx >= eee->sn_num)
-        {
-            /* Got to end of list, go back to the start. Also works for list of one entry. */
-            eee->sn_idx = 0;
-        }
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-        if (eee->reg_sn.timestamp < eee->last_register_req)      /* supernode didn't respond */
-        {
-            if (sn_cmp(&eee->supernode, &eee->reg_sn.sn) == 0)   /* supernode is the main one */
-            {
-                supernode2addr(&(eee->supernode), eee->sn_ip_array[eee->sn_idx]);
-
-                traceWarning("Changed active supernode to %s", eee->sn_ip_array[eee->sn_idx]);
-            }
-#endif
-        traceWarning("Supernode not responding - moving to %u of %u", 
-                   (unsigned int)eee->sn_idx, (unsigned int)eee->sn_num );
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-        }
-#endif
-
-        eee->sup_attempts = N2N_EDGE_SUP_ATTEMPTS;
-    }
-    else
-    {
-        --(eee->sup_attempts);
-    }
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    /* setting next supernode to register to */
-    supernode2addr(&(eee->reg_sn.sn), eee->sn_ip_array[eee->sn_idx]);
-    eee->reg_sn.timestamp = 0;
-    send_register_super(eee, &(eee->reg_sn.sn));
-
-#else
-    if (eee->re_resolve_supernode_ip || (eee->sn_num > 1))
-    {
-        supernode2addr(&(eee->supernode), eee->sn_ip_array[eee->sn_idx]);
-    }
-
-    send_register_super(eee, &(eee->supernode));
-#endif
-
-    traceDebug("Registering with supernode (%s) (attempts left %u)",
-               supernode_ip(eee), (unsigned int)eee->sup_attempts);
-
-    eee->sn_wait=1;
-
-    /* REVISIT: turn-on gratuitous ARP with config option. */
-    /* send_grat_arps(sock_fd, is_udp_sock); */
-
-    eee->last_register_req = nowTime;
-}
-
-
-
-/* @return 1 if destination is a peer, 0 if destination is supernode */
-static int find_peer_destination(n2n_edge_t *eee,
-                                 n2n_mac_t mac_address,
-                                 n2n_sock_t *destination)
-{
-    const struct peer_info *scan = NULL;
-    macstr_t mac_buf;
-    n2n_sock_str_t sockbuf;
-    int retval = 0;
-
-    traceDebug("Searching destination peer for MAC %02X:%02X:%02X:%02X:%02X:%02X",
-               mac_address[0] & 0xFF, mac_address[1] & 0xFF, mac_address[2] & 0xFF,
-               mac_address[3] & 0xFF, mac_address[4] & 0xFF, mac_address[5] & 0xFF);
-
-    N2N_LIST_FOR_EACH_ENTRY(scan, &eee->known_peers)
-    {
-        traceDebug("Evaluating peer [MAC=%02X:%02X:%02X:%02X:%02X:%02X]",
-                   scan->mac_addr[0] & 0xFF, scan->mac_addr[1] & 0xFF, scan->mac_addr[2] & 0xFF, 
-                   scan->mac_addr[3] & 0xFF, scan->mac_addr[4] & 0xFF, scan->mac_addr[5] & 0xFF);
-
-        if ((scan->last_seen > 0) && 
-            (memcmp(mac_address, scan->mac_addr, N2N_MAC_SIZE) == 0))
-        {
-            memcpy(destination, &scan->sock, sizeof(n2n_sock_t));
-            retval = 1;
-            break;
-        }
-    }
-
-    if (0 == retval)
-    {
-        memcpy(destination, &(eee->supernode), sizeof(struct sockaddr_in));
-    }
-
-    traceDebug("find_peer_address (%s) -> [%s]",
-               macaddr_str(mac_buf, mac_address),
-               sock_to_cstr(sockbuf, destination));
-
-    return retval;
-}
-
-
-
-
-/* *********************************************** */
-
-static const struct option long_options[] = {
-  { "community",       required_argument, NULL, 'c' },
-  { "supernode-list",  required_argument, NULL, 'l' },
-  { "tun-device",      required_argument, NULL, 'd' },
-  { "euid",            required_argument, NULL, 'u' },
-  { "egid",            required_argument, NULL, 'g' },
-  { "help"   ,         no_argument,       NULL, 'h' },
-  { "verbose",         no_argument,       NULL, 'v' },
-  { NULL,              0,                 NULL,  0  }
-};
-
-/* ***************************************************** */
-
-
-/** Send an ecapsulated ethernet PACKET to a destination edge or broadcast MAC
- *  address. */
-static int send_PACKET(n2n_edge_t *eee,
-                       n2n_mac_t dstMac,
-                       const uint8_t *pktbuf,
-                       size_t pktlen)
-{
-    int dest;
+    int is_p2p_dest;
     ssize_t s;
     n2n_sock_str_t sockbuf;
     n2n_sock_t destination;
 
     /* hexdump( pktbuf, pktlen ); */
 
-    dest = find_peer_destination(eee, dstMac, &destination);
+    is_p2p_dest = find_peer_destination(eee, dst_mac, &destination);
 
-    if (dest)
+    if (is_p2p_dest)
     {
         ++(eee->tx_p2p);
     }
@@ -1476,47 +1125,30 @@ static int send_PACKET(n2n_edge_t *eee,
     }
 
     traceInfo("send_PACKET to %s", sock_to_cstr(sockbuf, &destination));
-
     s = sendto_sock(eee->udp_sock, pktbuf, pktlen, &destination);
 
-    return 0;
+    return s;
 }
 
 
-/* Choose the transop for Tx. This should be based on the newest valid
- * cipherspec in the key schedule. 
- *
- * Never fall back to NULL tranform unless no key sources were specified. It is
- * better to render edge inoperative than to expose user data in the clear. In
- * the case where all SAs are expired an arbitrary transform will be chosen for
- * Tx. It will fail having no valid SAs but one must be selected.
+/**
+ * A layer-2 packet was received at the tunnel and needs to be sent via UDP.
  */
-static size_t edge_choose_tx_transop(const n2n_edge_t *eee)
+static void send_packet2net(n2n_edge_t *eee, uint8_t *tap_pkt, size_t len)
 {
-    if (eee->null_transop)
-    {
-        return N2N_TRANSOP_NULL_IDX;
-    }
-
-    return eee->tx_transop_idx;
-}
-
-
-/** A layer-2 packet was received at the tunnel and needs to be sent via UDP. */
-static void send_packet2net(n2n_edge_t *eee,
-                            uint8_t *tap_pkt, size_t len)
-{
-    ipstr_t ip_buf;
-    n2n_mac_t destMac;
-
-    n2n_common_t cmn;
     n2n_PACKET_t pkt;
+    n2n_common_t cmn;
 
     uint8_t pktbuf[N2N_PKT_BUF_SIZE];
-    size_t idx = 0;
+    size_t pktlen = 0;
+
     size_t tx_transop_idx = 0;
+    n2n_trans_op_t *tx_transop = NULL;
 
     ether_hdr_t eh;
+    //TODO n2n_mac_t dest_mac;
+    uint8_t *dest_mac;
+
 
     /* tap_pkt is not aligned so we have to copy to aligned memory */
     memcpy(&eh, tap_pkt, sizeof(ether_hdr_t));
@@ -1529,14 +1161,15 @@ static void send_packet2net(n2n_edge_t *eee,
             /* This is an IP packet from the local source address - not forwarded. */
 #define ETH_FRAMESIZE 14
 #define IP4_SRCOFFSET 12
-            uint32_t *dst = (uint32_t*) &tap_pkt[ETH_FRAMESIZE + IP4_SRCOFFSET];
+            uint32_t *dst = (uint32_t *) &tap_pkt[ETH_FRAMESIZE + IP4_SRCOFFSET];
 
             /* Note: all elements of the_ip are in network order */
             if (*dst != eee->device.ip_addr)
             {
+                ipstr_t ip_buf;
                 /* This is a packet that needs to be routed */
                 traceInfo("Discarding routed packet [%s]",
-                    intoa(ntohl(*dst), ip_buf, sizeof(ip_buf)));
+                          intoa(ntohl(*dst), ip_buf, sizeof(ip_buf)));//TODO
                 return;
             }
             else
@@ -1547,82 +1180,48 @@ static void send_packet2net(n2n_edge_t *eee,
         }
     }
 
-    /* Optionally compress then apply transforms, eg encryption. */
+    /* Optionally compress then apply transforms, e.g. encryption. */
 
     /* Once processed, send to destination in PACKET */
 
-    memcpy(destMac, tap_pkt, N2N_MAC_SIZE); /* dest MAC is first in ethernet header */
+    //TODO memcpy(dest_mac, tap_pkt, N2N_MAC_SIZE); /* dest MAC is first in ethernet header */
+    dest_mac = eh.dhost;
+
+    tx_transop_idx = edge_choose_tx_transop(eee);
+    //TODO
+    tx_transop = &eee->transop[tx_transop_idx];
 
     /* no options, not from supernode, no socket */
     init_cmn(&cmn, n2n_packet, 0, eee->community_name);
 
     memset(&pkt, 0, sizeof(pkt));
     memcpy(pkt.srcMac, eee->device.mac_addr, N2N_MAC_SIZE);
-    memcpy(pkt.dstMac, destMac, N2N_MAC_SIZE);
+    memcpy(pkt.dstMac, dest_mac, N2N_MAC_SIZE);
+    //pkt.sock.family = 0; /* do not encode sock */
+    pkt.transform = tx_transop->transform_id;
 
-    tx_transop_idx = edge_choose_tx_transop(eee);
 
-    pkt.sock.family = 0; /* do not encode sock */
-    pkt.transform = eee->transop[tx_transop_idx].transform_id;
-
-    idx = 0;
-    encode_PACKET(pktbuf, &idx, &cmn, &pkt);
+    pktlen = 0;
+    encode_PACKET(pktbuf, &pktlen, &cmn, &pkt);
     traceDebug("encoded PACKET header of size=%u transform %u (idx=%u)",
-               (unsigned int) idx, (unsigned int) pkt.transform, (unsigned int) tx_transop_idx);
+               (unsigned int) pktlen, (unsigned int) pkt.transform, (unsigned int) tx_transop_idx);
 
-    idx += eee->transop[tx_transop_idx].fwd(&(eee->transop[tx_transop_idx]),
-                                            pktbuf + idx, N2N_PKT_BUF_SIZE - idx,
-                                            tap_pkt, len);
-    ++(eee->transop[tx_transop_idx].tx_cnt); /* stats */
+    /* Transform */
+    pktlen += tx_transop->fwd(tx_transop,
+                              pktbuf + pktlen, N2N_PKT_BUF_SIZE - pktlen, /* out */
+                              tap_pkt, len); /* in */
 
-    send_PACKET(eee, destMac, pktbuf, idx); /* to peer or supernode */
+    /* Update statistics (TODO: what if sending error?) */
+    ++tx_transop->tx_cnt;
+
+    send_PACKET(eee, dest_mac, pktbuf, pktlen); /* to peer or supernode */
 }
 
 
-
-
-
-/** Read a single packet from the TAP interface, process it and write out the
- *  corresponding packet to the cooked socket.
+/**
+ * A PACKET has arrived containing an encapsulated Ethernet datagram - usually
+ * encrypted.
  */
-static void readFromTAPSocket(n2n_edge_t *eee)
-{
-    /* tun -> remote */
-    uint8_t    eth_pkt[N2N_PKT_BUF_SIZE];
-    macstr_t   mac_buf;
-    ssize_t    len;
-
-    len = tuntap_read(&(eee->device), eth_pkt, N2N_PKT_BUF_SIZE);
-
-    if ((len <= 0) || (len > N2N_PKT_BUF_SIZE))
-    {
-        traceWarning("read()=%d [%d/%s]",
-                   (signed int) len, errno, strerror(errno));
-    }
-    else
-    {
-        const uint8_t *mac = eth_pkt;
-        traceInfo("### Rx TAP packet (%4d) for %s",
-            (signed int) len, macaddr_str(mac_buf, mac));
-
-        if (eee->drop_multicast && 
-            (is_ipv6_multicast_mac(eth_pkt) ||
-             is_broadcast_mac(eth_pkt)/* ||
-             is_ethMulticast(eth_pkt, len)*/))
-        {
-            traceDebug("Dropping multicast");
-        }
-        else
-        {
-            send_packet2net(eee, eth_pkt, len);
-        }
-    }
-}
-
-
-
-/** A PACKET has arrived containing an encapsulated ethernet datagram - usually
- *  encrypted. */
 static int handle_PACKET(n2n_edge_t *eee,
                          const n2n_common_t *cmn,
                          const n2n_PACKET_t *pkt,
@@ -1632,9 +1231,9 @@ static int handle_PACKET(n2n_edge_t *eee,
 {
     ssize_t     data_sent_len;
     uint8_t     from_supernode;
-    uint8_t    *eth_payload = NULL;
-    int         retval = -1;
+    //TODO uint8_t    *eth_payload = NULL;
     time_t      now;
+    int         retval = -1;
 
     now = time(NULL);
 
@@ -1642,7 +1241,7 @@ static int handle_PACKET(n2n_edge_t *eee,
                (unsigned int) psize, (unsigned int) pkt->transform);
     /* hexdump( payload, psize ); */
 
-    from_supernode= cmn->flags & N2N_FLAGS_FROM_SUPERNODE;
+    from_supernode = ( cmn->flags & N2N_FLAGS_FROM_SUPERNODE );
 
     if (from_supernode)
     {
@@ -1658,203 +1257,143 @@ static int handle_PACKET(n2n_edge_t *eee,
     /* Update the sender in peer table entry */
     check_peer(eee, from_supernode, pkt->srcMac, orig_sender);
 
+    size_t rx_transop_idx = 0;
+    rx_transop_idx = transop_enum_to_index(pkt->transform);
+
+    if (rx_transop_idx < 0)
+    {
+        traceError("handle_PACKET dropped unknown transform enum %u",
+                   (unsigned int) pkt->transform);
+        return -1;
+    }
+
     /* Handle transform. */
     {
-        uint8_t decodebuf[N2N_PKT_BUF_SIZE];
+        uint8_t eth_payload[N2N_PKT_BUF_SIZE];
         size_t eth_size;
-        size_t rx_transop_idx = 0;
 
-        rx_transop_idx = transop_enum_to_index(pkt->transform);
+        n2n_trans_op_t *rx_transop = &eee->transop[rx_transop_idx];
 
-        if (rx_transop_idx >= 0)
-        {
-            eth_payload = decodebuf;
-            eth_size = eee->transop[rx_transop_idx].rev(&(eee->transop[rx_transop_idx]),
-                                                        eth_payload, N2N_PKT_BUF_SIZE,
-                payload, psize);
-            ++(eee->transop[rx_transop_idx].rx_cnt); /* stats */
+        //TODO eth_payload = decodebuf;
+        eth_size = rx_transop->rev(rx_transop,
+                                   eth_payload, N2N_PKT_BUF_SIZE, /* out */
+                                   payload, psize); /* in */
 
-            /* Write ethernet packet to tap device. */
-            traceInfo("sending to TAP %u", (unsigned int) eth_size);
-            data_sent_len = tuntap_write(&(eee->device), eth_payload, eth_size);
+        /* Update statistics */
+        ++rx_transop->rx_cnt;
 
-            if (data_sent_len == eth_size)
-            {
-                retval = 0;
-            }
-        }
-        else
-        {
-            traceError("handle_PACKET dropped unknown transform enum %u",
-                       (unsigned int) pkt->transform);
-        }
+        /* Write Ethernet packet to tap device. */
+        traceInfo("sending to TAP %u", (unsigned int) eth_size);
+        data_sent_len = tuntap_write(&eee->device, eth_payload, eth_size);
+
+        retval = -(data_sent_len != eth_size);
     }
 
     return retval;
 }
 
 
-/** Read a datagram from the management UDP socket and take appropriate
- *  action. */
-static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running)
+/**
+ * Read a single packet from the TAP interface, process it and write out the
+ * corresponding packet to the cooked socket.
+ */
+static void readFromTAPSocket(n2n_edge_t *eee)
 {
-    uint8_t             udp_buf[N2N_PKT_BUF_SIZE];      /* Compete UDP packet */
-    ssize_t             recvlen;
-    ssize_t             sendlen;
-    struct sockaddr_in  sender_sock;
-    socklen_t           i;
-    size_t              msg_len;
-    time_t              now;
+    /* tun -> remote */
+    uint8_t    eth_pkt[N2N_PKT_BUF_SIZE];
+    ssize_t    eth_len;
 
-    now = time(NULL);
-    i = sizeof(sender_sock);
-    recvlen = recvfrom(eee->udp_mgmt_sock, udp_buf, N2N_PKT_BUF_SIZE, 0/*flags*/,
-                       (struct sockaddr *) &sender_sock, (socklen_t*) &i);
+    const uint8_t *dst_mac = eth_pkt;
+    macstr_t mac_buf;
 
-    if (recvlen < 0)
+    eth_len = tuntap_read(&eee->device, eth_pkt, N2N_PKT_BUF_SIZE);
+
+    if ((eth_len <= 0) || (eth_len > N2N_PKT_BUF_SIZE))
     {
-        traceError("mgmt recvfrom failed with %s", strerror(errno));
-
-        return; /* failed to receive data from UDP */
+        traceWarning("tuntap_read()=%d [%d/%s]",
+                     (signed int) eth_len, errno, strerror(errno));
+        return;
     }
 
-    if (recvlen >= 4)
+    traceInfo("### Rx TAP packet (%4d) for %s",
+              (signed int) eth_len, macaddr_str(mac_buf, dst_mac));
+
+    if (eee->drop_multicast &&
+        (is_ipv6_multicast_mac(dst_mac) ||
+         is_broadcast_mac(dst_mac)/* ||
+         is_ethMulticast(eth_pkt, len)*/))
     {
-        if (0 == memcmp(udp_buf, "stop", 4))
-        {
-            traceError("stop command received.");
-            *keep_running = 0;
-            return;
-        }
-
-        if (0 == memcmp(udp_buf, "help", 4))
-        {
-            msg_len = 0;
-            ++traceLevel;
-
-            msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                                "Help for edge management console:\n"
-                                "  stop    Gracefully exit edge\n"
-                                "  help    This help message\n"
-                                "  +verb   Increase verbosity of logging\n"
-                                "  -verb   Decrease verbosity of logging\n"
-                                "  reload  Re-read the keyschedule\n"
-                                "  <enter> Display statistics\n\n");
-
-            sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/*flags*/,
-                   (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
-
-            return;
-        }
-
+        traceDebug("Dropping multicast");
     }
-
-    if (recvlen >= 5)
+    else
     {
-        if (0 == memcmp(udp_buf, "+verb", 5))
-        {
-            msg_len = 0;
-            ++traceLevel;
-
-            traceError("+verb traceLevel=%u", (unsigned int) traceLevel);
-            msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                                "> +OK traceLevel=%u\n", (unsigned int) traceLevel);
-
-            sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/*flags*/,
-                   (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
-
-            return;
-        }
-
-        if (0 == memcmp(udp_buf, "-verb", 5))
-        {
-            msg_len = 0;
-
-            if (traceLevel > 0)
-            {
-                --traceLevel;
-                msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len), 
-                                    "> -OK traceLevel=%u\n", traceLevel);
-            }
-            else
-            {
-                msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len), 
-                                    "> -NOK traceLevel=%u\n", traceLevel);
-            }
-
-            traceError("-verb traceLevel=%u", (unsigned int) traceLevel);
-
-            sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/*flags*/,
-                (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
-            return;
-        }
+        send_packet2net(eee, eth_pkt, eth_len);
     }
-
-    if (recvlen >= 6)
-    {
-        if (0 == memcmp(udp_buf, "reload", 6))
-        {
-            if (strlen(eee->keyschedule) > 0)
-            {
-                if (edge_init_keyschedule(eee) == 0)
-                {
-                    msg_len = 0;
-                    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                                        "> OK\n");
-                    sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/*flags*/,
-                           (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
-                }
-                return;
-            }
-        }
-    }
-
-    traceDebug("mgmt status rq");
-
-    msg_len = 0;
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len), 
-                        "Statistics for edge\n");
-
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len), 
-                        "uptime %lu\n",
-                        time(NULL) - eee->start_time);
-
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                        "paths  super:%u,%u p2p:%u,%u\n",
-                        (unsigned int) eee->tx_sup,
-                        (unsigned int) eee->rx_sup,
-                        (unsigned int) eee->tx_p2p,
-                        (unsigned int) eee->rx_p2p);
-
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                        "trans:null |%6u|%6u|\n"
-                        "trans:tf   |%6u|%6u|\n"
-                        "trans:aes  |%6u|%6u|\n",
-                        (unsigned int) eee->transop[N2N_TRANSOP_NULL_IDX].tx_cnt,
-                        (unsigned int) eee->transop[N2N_TRANSOP_NULL_IDX].rx_cnt,
-                        (unsigned int) eee->transop[N2N_TRANSOP_TF_IDX].tx_cnt,
-                        (unsigned int) eee->transop[N2N_TRANSOP_TF_IDX].rx_cnt,
-                        (unsigned int) eee->transop[N2N_TRANSOP_AESCBC_IDX].tx_cnt,
-                        (unsigned int) eee->transop[N2N_TRANSOP_AESCBC_IDX].rx_cnt);
-
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                        "peers  pend:%u full:%u\n",
-                        (unsigned int) list_size(&eee->pending_peers),
-                        (unsigned int) list_size(&eee->known_peers));
-
-    msg_len += snprintf((char *) (udp_buf + msg_len), (N2N_PKT_BUF_SIZE - msg_len),
-                        "last   super:%lu(%ld sec ago) p2p:%lu(%ld sec ago)\n",
-                        eee->last_sup, (now - eee->last_sup), eee->last_p2p, (now - eee->last_p2p));
-
-    traceDebug("mgmt status sending: %s", udp_buf);
-
-    sendlen = sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/*flags*/,
-        (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
-
 }
 
 
-/** Read a datagram from the main UDP socket to the internet. */
+#if defined(DUMMY_ID_00001) /* Disabled waiting for config option to enable it */
+
+
+
+static char gratuitous_arp[] = {
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, /* Dest MAC */
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Src MAC */
+  0x08, 0x06, /* ARP */
+  0x00, 0x01, /* Ethernet */
+  0x08, 0x00, /* IP */
+  0x06, /* Hw Size */
+  0x04, /* Protocol Size */
+  0x00, 0x01, /* ARP Request */
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Src MAC */
+  0x00, 0x00, 0x00, 0x00, /* Src IP */
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* Target MAC */
+  0x00, 0x00, 0x00, 0x00  /* Target IP */
+};
+
+
+/** Build a gratuitous ARP packet for a /24 layer 3 (IP) network. */
+static int build_gratuitous_arp(char *buffer, uint16_t buffer_len)
+{
+    if (buffer_len < sizeof(gratuitous_arp))
+        return (-1);
+
+    memcpy(buffer, gratuitous_arp, sizeof(gratuitous_arp));
+    memcpy(&buffer[6], device.mac_addr, 6);
+    memcpy(&buffer[22], device.mac_addr, 6);
+    memcpy(&buffer[28], &device.ip_addr, 4);
+
+    /* REVISIT: BbMaj7 - use a real netmask here. This is valid only by accident
+     * for /24 IPv4 networks. */
+    buffer[31] = 0xFF; /* Use a faked broadcast address */
+    memcpy(&buffer[38], &device.ip_addr, 4);
+    return (sizeof(gratuitous_arp));
+}
+
+/** Called from update_supernode_reg to periodically send gratuitous ARP
+ *  broadcasts. */
+static void send_grat_arps(n2n_edge_t *eee,)
+{
+    char buffer[48];
+    size_t len;
+
+    traceNormal("Sending gratuitous ARP...");
+    len = build_gratuitous_arp(buffer, sizeof(buffer));
+    send_packet2net(eee, buffer, len);
+    send_packet2net(eee, buffer, len); /* Two is better than one :-) */
+}
+#endif /* #if defined(DUMMY_ID_00001) */
+
+
+/******************************************************************************
+ *
+ * UDP
+ *
+ */
+
+/**
+ * Read a datagram from the main UDP socket to the Internet.
+ */
 static void readFromIPSocket(n2n_edge_t *eee)
 {
     n2n_common_t        cmn; /* common fields in the packet header */
@@ -2056,21 +1595,268 @@ static void readFromIPSocket(n2n_edge_t *eee)
     {
         traceWarning("Received packet with invalid community");
     }
+}
 
+
+/******************************************************************************
+ *
+ * EDGE MANAGEMENT
+ *
+ */
+
+/**
+ * Read a datagram from the management UDP socket and take appropriate action.
+ */
+static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running)
+{
+    uint8_t             udp_buf[N2N_PKT_BUF_SIZE]; /* Complete UDP packet */
+    ssize_t             recvlen;
+    ssize_t             sendlen;
+    struct sockaddr_in  sender_sock;
+    socklen_t           i;
+    size_t              msg_len;
+
+    i = sizeof(sender_sock);
+    recvlen = recvfrom(eee->udp_mgmt_sock, udp_buf, N2N_PKT_BUF_SIZE, 0 /* flags */,
+                       (struct sockaddr *) &sender_sock, (socklen_t *) &i);
+
+    if (recvlen < 0)
+    {
+        traceError("mgmt recvfrom failed with %s", strerror(errno));
+        return; /* failed to receive data from UDP */
+    }
+
+    edge_cmd_t cmd_type = process_edge_mgmt(eee, udp_buf, recvlen, udp_buf, &msg_len);
+
+    switch (cmd_type)
+    {
+    case EDGE_CMD_STOP:
+        traceError("stop command received.");
+        *keep_running = 0;
+        return;
+    case EDGE_CMD_STATS:
+        traceDebug("mgmt status sending: %s", udp_buf);
+        break;
+    default:
+        break;
+    }
+
+    sendlen = sendto(eee->udp_mgmt_sock, udp_buf, msg_len, 0/* flags */,
+                     (struct sockaddr *) &sender_sock, sizeof(struct sockaddr_in));
+
+    if (sendlen < 0)
+    {
+        traceError("mgmt sendto failed with %s", strerror(errno));
+    }
 }
 
 /* ***************************************************** */
 
+
+/* ***************************************************** */
+
+
+//TODO
+
+#define N2N_NETMASK_STR_SIZE    16 /* dotted decimal 12 numbers + 3 dots */
+#define N2N_MACNAMSIZ           18 /* AA:BB:CC:DD:EE:FF + NULL*/
+#define N2N_IF_MODE_SIZE        16 /* static | dhcp */
+
+
+
+
+
+/******************************************************************************/
+
+
+struct boot_helper
+{
+    int     local_port;
+    int     mgmt_port;
+#ifdef N2N_MULTIPLE_SUPERNODES
+    int     snm_port;
+#endif
+#ifndef WIN32
+    int     user_id;
+    int     group_id;
+#endif
+    char   *encrypt_key;
+};
+
+typedef struct boot_helper boot_helper_t;
+
+
+static void initBootHelper(boot_helper_t *boot_helper)
+{
+    char *env_key = getenv("N2N_KEY");
+    boot_helper->local_port = 0 /* any port */;
+    boot_helper->mgmt_port = N2N_EDGE_MGMT_PORT; /* 5644 by default */
+#ifdef N2N_MULTIPLE_SUPERNODES
+    boot_helper->snm_port = 0 //TODO
+#endif
+#ifndef WIN32
+    boot_helper->user_id = 0;  /* root is the only guaranteed ID */
+    boot_helper->group_id = 0; /* root is the only guaranteed ID */
+#endif
+    boot_helper->encrypt_key = (env_key ? strdup(env_key) : NULL);
+}
+
+
+static void destroyBootHelper(boot_helper_t *boot_helper)
+{
+    if (boot_helper->encrypt_key)
+    {
+        free(boot_helper->encrypt_key);
+        boot_helper->encrypt_key = NULL;
+    }
+}
+
+
+static int edge_start(n2n_edge_t *edge, boot_helper_t *boot_helper)
+{
+    int i;
+
+#ifdef N2N_HAVE_DAEMON
+    if (edge->daemon)
+    {
+        /* traceEvent output now goes to syslog. */
+        useSyslog = 1;
+        if (-1 == daemon(0, 0))
+        {
+            traceError("Failed to become daemon.");
+            exit(-5);
+        }
+    }
+#endif /* N2N_HAVE_DAEMON */
+
+
+    traceNormal("Starting n2n edge %s %s", n2n_sw_version, n2n_sw_buildDate);
+
+
+    for (i = 0; i < N2N_EDGE_NUM_SUPERNODES; ++i)
+    {
+        traceNormal("supernode %u => %s\n", i, (edge->sn_ip_array[i]));
+    }
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    if (load_supernodes(&eee) > 0)
+#endif
+    //TODO supernode2addr(&(edge->supernode), edge->sn_ip_array[edge->sn_idx]);
+    edge->supernode = edge->my_supernodes[edge->sn_idx];
+
+    /* Open TAP device */
+
+#ifndef WIN32
+    /* If running suid root then we need to setuid before using the force. */
+    if (-1 == setuid(0))
+    {
+        traceError("setuid(0) [%s]\n", strerror(errno));
+        return -1;
+    }
+    /* setgid( 0 ); */
+#endif
+
+    if (tuntap_open(&edge->device, edge->dyn_ip_mode) < 0)
+        return (-1);
+
+#ifndef WIN32
+    if ((boot_helper->user_id != 0) || (boot_helper->group_id != 0))
+    {
+        traceNormal("Interface up. Dropping privileges to uid=%d, gid=%d",
+                    (signed int) boot_helper->user_id, (signed int) boot_helper->group_id);
+
+        /* Finished with the need for root privileges. Drop to unprivileged user. */
+        setreuid(boot_helper->user_id, boot_helper->user_id);
+        setregid(boot_helper->group_id, boot_helper->group_id);
+    }
+#endif
+
+    /* Init encryption */
+
+    if (boot_helper->encrypt_key)
+    {
+        if (edge_init_twofish(edge, (uint8_t *) boot_helper->encrypt_key, strlen(boot_helper->encrypt_key)) < 0)
+        {
+            fprintf(stderr, "Error: twofish setup failed.\n");
+            return (-1);
+        }
+    }
+    else if (strlen(edge->keyschedule) > 0)
+    {
+        if (edge_init_keyschedule(edge) != 0)
+        {
+            fprintf(stderr, "Error: keyschedule setup failed.\n");
+            return (-1);
+        }
+    }
+    else
+    {
+        /* run in NULL mode */
+        traceWarning("Encryption is disabled in edge.");
+        edge->null_transop = 1;
+    }
+
+
+    /* Open connections */
+
+    if (boot_helper->local_port > 0)
+        traceNormal("Binding to local port %d", (unsigned int) boot_helper->local_port);
+
+    edge->udp_sock = open_socket(boot_helper->local_port, 1 /*bind ANY*/);
+    if (edge->udp_sock < 0)
+    {
+        traceError("Failed to bind main UDP port %u", (unsigned int) boot_helper->local_port);
+        return (-1);
+    }
+
+    edge->udp_mgmt_sock = open_socket(boot_helper->mgmt_port, 0 /* bind LOOPBACK*/);
+    if (edge->udp_mgmt_sock < 0)
+    {
+        traceError("Failed to bind management UDP port %u", (unsigned int) N2N_EDGE_MGMT_PORT);
+        return (-1);
+    }
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+
+    edge->snm_sock = open_socket(snm_port, 1 /*bind ANY*/);
+    if (edge->snm_sock < 0)
+    {
+        traceError("Failed to bind SNM UDP port %d", snm_port);
+        return(-1);
+    }
+
+    if (edge->snm_discovery_state == N2N_SNM_STATE_DISCOVERY)
+    {
+        /* send requests to all supernodes */
+        struct sn_info *sni = NULL;
+
+        N2N_LIST_FOR_EACH_ENTRY(sni, &edge->supernodes.head)
+        {
+            edge_send_snm_req(edge, &sni->sn);
+        }
+    }
+
+#else
+
+    update_supernode_reg(edge, time(NULL));
+
+#endif
+
+    traceNormal("edge started");
+
+    return 0;
+}
+
+
 #ifdef WIN32
+
 static DWORD tunReadThread(LPVOID lpArg)
 {
-    n2n_edge_t *eee = (n2n_edge_t*) lpArg;
-
+    n2n_edge_t *eee = (n2n_edge_t *) lpArg;
     while (1)
     {
         readFromTAPSocket(eee);
     }
-
     return ((DWORD) NULL);
 }
 
@@ -2091,565 +1877,6 @@ static void startTunReadThread(n2n_edge_t *eee)
 }
 #endif
 
-/* ***************************************************** */
-
-/** Resolve the supernode IP address.
- *
- *  REVISIT: This is a really bad idea. The edge will block completely while the
- *           hostname resolution is performed. This could take 15 seconds.
- */
-static void supernode2addr(n2n_sock_t *sn, const n2n_sn_name_t addrIn)
-{
-    n2n_sn_name_t addr;
-    const char *supernode_host;
-
-    memcpy(addr, addrIn, N2N_EDGE_SN_HOST_SIZE);
-
-    supernode_host = strtok(addr, ":");
-
-    if (supernode_host)
-    {
-        in_addr_t sn_addr;
-        char *supernode_port = strtok(NULL, ":");
-        const struct addrinfo aihints = { 0, PF_INET, 0, 0, 0, NULL, NULL, NULL };
-        struct addrinfo *ainfo = NULL;
-        int nameerr;
-
-        if (supernode_port)
-            sn->port = atoi(supernode_port);
-        else
-            traceWarning("Bad supernode parameter (-l <host:port>) %s %s:%s",
-                       addr, supernode_host, supernode_port);
-
-        nameerr = getaddrinfo(supernode_host, NULL, &aihints, &ainfo);
-
-        if (0 == nameerr)
-        {
-            struct sockaddr_in *saddr;
-
-            /* ainfo s the head of a linked list if non-NULL. */
-            if (ainfo && (PF_INET == ainfo->ai_family))
-            {
-                /* It is definitely and IPv4 address -> sockaddr_in */
-                saddr = (struct sockaddr_in *) ainfo->ai_addr;
-
-                memcpy(sn->addr.v4, &(saddr->sin_addr.s_addr), IPV4_SIZE);
-                sn->family = AF_INET;
-            }
-            else
-            {
-                /* Should only return IPv4 addresses due to aihints. */
-                traceWarning("Failed to resolve supernode IPv4 address for %s", supernode_host);
-            }
-
-            freeaddrinfo(ainfo); /* free everything allocated by getaddrinfo(). */
-            ainfo = NULL;
-        }
-        else
-        {
-            traceWarning("Failed to resolve supernode host %s, assuming numeric", supernode_host);
-            sn_addr = inet_addr(supernode_host); /* uint32_t */
-            memcpy(sn->addr.v4, &(sn_addr), IPV4_SIZE);
-            sn->family = AF_INET;
-        }
-
-    }
-    else
-        traceWarning("Wrong supernode parameter (-l <host:port>)");
-}
-
-/* ***************************************************** */
-
-
-/** Find the address and IP mode for the tuntap device.
- *
- *  s is one of these forms:
- *
- *  <host> := <hostname> | A.B.C.D
- *
- *  <host> | static:<host> | dhcp:<host>
- *
- *  If the mode is present (colon required) then fill ip_mode with that value
- *  otherwise do not change ip_mode. Fill ip_mode with everything after the
- *  colon if it is present; or s if colon is not present.
- *
- *  ip_add and ip_mode are NULL terminated if modified.
- *
- *  return 0 on success and -1 on error
- */
-static int scan_address(char *ip_addr, size_t addr_size,
-                        char *ip_mode, size_t mode_size,
-                        const char *s)
-{
-    int retval = -1;
-    char *p;
-
-    if ((NULL == s) || (NULL == ip_addr))
-    {
-        return -1;
-    }
-
-    memset(ip_addr, 0, addr_size);
-
-    p = strpbrk(s, ":");
-
-    if (p)
-    {
-        /* colon is present */
-        if (ip_mode)
-        {
-            size_t end = 0;
-
-            memset(ip_mode, 0, mode_size);
-            end = MIN( p-s, (ssize_t)(mode_size-1) ); /* ensure NULL term */
-            strncpy(ip_mode, s, end);
-            strncpy(ip_addr, p + 1, addr_size - 1); /* ensure NULL term */
-            retval = 0;
-        }
-    }
-    else
-    {
-        /* colon is not present */
-        strncpy(ip_addr, s, addr_size);
-    }
-
-    return retval;
-}
-
-static int run_loop(n2n_edge_t *eee);
-
-#define N2N_NETMASK_STR_SIZE    16 /* dotted decimal 12 numbers + 3 dots */
-#define N2N_MACNAMSIZ           18 /* AA:BB:CC:DD:EE:FF + NULL*/
-#define N2N_IF_MODE_SIZE        16 /* static | dhcp */
-
-/** Entry point to program from kernel. */
-int main(int argc, char* argv[])
-{
-    int     opt;
-    int     local_port = 0 /* any port */;
-    int     mgmt_port = N2N_EDGE_MGMT_PORT; /* 5644 by default */
-    char    tuntap_dev_name[N2N_IFNAMSIZ] = "edge0";
-    char    ip_mode[N2N_IF_MODE_SIZE] = "static";
-    char    ip_addr[N2N_NETMASK_STR_SIZE] = "";
-    char    netmask[N2N_NETMASK_STR_SIZE] = "255.255.255.0";
-    int     mtu = DEFAULT_MTU;
-    int     got_s = 0;
-
-#ifndef WIN32
-    uid_t   userid = 0; /* root is the only guaranteed ID */
-    gid_t   groupid = 0; /* root is the only guaranteed ID */
-#endif
-
-    char    device_mac[N2N_MACNAMSIZ] = "";
-    char   *encrypt_key = NULL;
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    const char *optstring = "K:k:a:bc:Eu:g:m:M:s:S:d:l:p:fvhrt:";
-#else
-    const char *optstring = "K:k:a:bc:Eu:g:m:M:s:d:l:p:fvhrt:";
-#endif
-
-    int     i, effectiveargc = 0;
-    char  **effectiveargv = NULL;
-    char   *linebuffer = NULL;
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    int     snm_port = 0;
-#endif
-
-    n2n_edge_t eee; /* single instance for this program */
-
-    if (-1 == edge_init(&eee))
-    {
-        traceError("Failed in edge_init");
-        exit(1);
-    }
-
-    if (getenv("N2N_KEY"))
-    {
-        encrypt_key = strdup(getenv("N2N_KEY"));
-    }
-
-#ifdef WIN32
-    tuntap_dev_name[0] = '\0';
-#endif
-    memset(&(eee.supernode), 0, sizeof(eee.supernode));
-    eee.supernode.family = AF_INET;
-
-    linebuffer = (char *) malloc(MAX_CMDLINE_BUFFER_LENGTH);
-    if (!linebuffer)
-    {
-        traceError("Unable to allocate memory");
-        exit(1);
-    }
-    snprintf(linebuffer, MAX_CMDLINE_BUFFER_LENGTH, "%s", argv[0]);
-
-#ifdef WIN32
-    for (i = 0; i < (int) strlen(linebuffer); i++)
-        if (linebuffer[i] == '\\')
-            linebuffer[i] = '/';
-#endif
-
-    for (i = 1; i < argc; ++i)
-    {
-        if (argv[i][0] == '@')
-        {
-            if (readConfFile(&argv[i][1], linebuffer) < 0)
-                exit(1); /* <<<<----- check */
-        }
-        else if ((strlen(linebuffer) + strlen(argv[i]) + 2) < MAX_CMDLINE_BUFFER_LENGTH)
-        {
-            strncat(linebuffer, " ", 1);
-            strncat(linebuffer, argv[i], strlen(argv[i]));
-        }
-        else
-        {
-            traceError("too many argument");
-            exit(1);
-        }
-    }
-    /*  strip trailing spaces */
-    while (strlen(linebuffer) && linebuffer[strlen(linebuffer) - 1] == ' ')
-        linebuffer[strlen(linebuffer) - 1] = '\0';
-
-    /* build the new argv from the linebuffer */
-    effectiveargv = buildargv(&effectiveargc, linebuffer);
-
-    if (linebuffer)
-    {
-        free(linebuffer);
-        linebuffer = NULL;
-    }
-
-    /* {int k;for(k=0;k<effectiveargc;++k)  printf("%s\n",effectiveargv[k]);} */
-
-    optarg = NULL;
-    while ((opt = getopt_long(effectiveargc,
-                              effectiveargv,
-                              optstring, long_options, NULL)) != EOF)
-    {
-        switch (opt)
-        {
-        case 'K':
-        {
-            if (encrypt_key)
-            {
-                fprintf(stderr, "Error: -K and -k options are mutually exclusive.\n");
-                exit(1);
-            }
-            else
-            {
-                strncpy(eee.keyschedule, optarg, N2N_PATHNAME_MAXLEN - 1);
-                eee.keyschedule[N2N_PATHNAME_MAXLEN - 1] = 0; /* strncpy does not add NULL if the source has no NULL. */
-                traceDebug("keyfile = '%s'\n", eee.keyschedule);
-                fprintf(stderr, "keyfile = '%s'\n", eee.keyschedule);
-            }
-            break;
-        }
-        case 'a': /* IP address and mode of TUNTAP interface */
-        {
-            scan_address(ip_addr, N2N_NETMASK_STR_SIZE,
-                         ip_mode, N2N_IF_MODE_SIZE,
-                         optarg);
-            break;
-        }
-        case 'c': /* community as a string */
-        {
-            memset(eee.community_name, 0, N2N_COMMUNITY_SIZE);
-            strncpy((char *) eee.community_name, optarg, N2N_COMMUNITY_SIZE);
-            break;
-        }
-        case 'E': /* multicast ethernet addresses accepted. */
-        {
-            eee.drop_multicast = 0;
-            traceDebug("Enabling ethernet multicast traffic\n");
-            break;
-        }
-
-#ifndef WIN32
-        case 'u': /* unprivileged uid */
-        {
-            userid = atoi(optarg);
-            break;
-        }
-        case 'g': /* unprivileged uid */
-        {
-            groupid = atoi(optarg);
-            break;
-        }
-#endif
-#ifdef N2N_HAVE_DAEMON
-        case 'f': /* do not fork as daemon */
-        {
-            eee.daemon = 0;
-            break;
-        }
-#endif /* #ifdef N2N_HAVE_DAEMON */
-
-        case 'm': /* TUNTAP MAC address */
-        {
-            strncpy(device_mac, optarg, N2N_MACNAMSIZ);
-            break;
-        }
-
-        case 'M': /* TUNTAP MTU */
-        {
-            mtu = atoi(optarg);
-            break;
-        }
-
-        case 'k': /* encrypt key */
-        {
-            if (strlen(eee.keyschedule) > 0)
-            {
-                fprintf(stderr, "Error: -K and -k options are mutually exclusive.\n");
-                exit(1);
-            }
-            else
-            {
-                traceDebug("encrypt_key = '%s'\n", encrypt_key);
-                encrypt_key = strdup(optarg);
-            }
-            break;
-        }
-        case 'r': /* enable packet routing across n2n endpoints */
-        {
-            eee.allow_routing = 1;
-            break;
-        }
-
-        case 'l': /* supernode-list */
-        {
-            if (eee.sn_num < N2N_EDGE_NUM_SUPERNODES)
-            {
-                strncpy((eee.sn_ip_array[eee.sn_num]), optarg, N2N_EDGE_SN_HOST_SIZE);
-                traceDebug("Adding supernode[%u] = %s\n", (unsigned int) eee.sn_num, (eee.sn_ip_array[eee.sn_num]));
-                ++eee.sn_num;
-            }
-            else
-            {
-                fprintf(stderr, "Too many supernodes!\n");
-                exit(1);
-            }
-            break;
-        }
-
-#if defined(N2N_CAN_NAME_IFACE)
-        case 'd': /* TUNTAP name */
-        {
-            strncpy(tuntap_dev_name, optarg, N2N_IFNAMSIZ);
-            break;
-        }
-#endif
-
-        case 'b':
-        {
-            eee.re_resolve_supernode_ip = 1;
-            break;
-        }
-
-        case 'p':
-        {
-            local_port = atoi(optarg);
-            break;
-        }
-
-        case 't':
-        {
-            mgmt_port = atoi(optarg);
-            break;
-        }
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-        case 'S':
-        {
-            snm_port = atoi(optarg);
-            break;
-        }
-#endif
-
-        case 's': /* Subnet Mask */
-        {
-            if (0 != got_s)
-            {
-                traceWarning("Multiple subnet masks supplied.");
-            }
-            strncpy(netmask, optarg, N2N_NETMASK_STR_SIZE);
-            got_s = 1;
-            break;
-        }
-
-        case 'h': /* help */
-        {
-            help();
-            break;
-        }
-
-        case 'v': /* verbose */
-        {
-            ++traceLevel; /* do 2 -v flags to increase verbosity to DEBUG level*/
-            break;
-        }
-
-        } /* end switch */
-    }
-
-
-#ifdef N2N_HAVE_DAEMON
-    if (eee.daemon)
-    {
-        useSyslog = 1; /* traceEvent output now goes to syslog. */
-        if (-1 == daemon(0, 0))
-        {
-            traceError("Failed to become daemon.");
-            exit(-5);
-        }
-    }
-#endif /* #ifdef N2N_HAVE_DAEMON */
-
-
-    traceNormal("Starting n2n edge %s %s", n2n_sw_version, n2n_sw_buildDate);
-
-
-    for (i = 0; i < N2N_EDGE_NUM_SUPERNODES; ++i)
-    {
-        traceNormal("supernode %u => %s\n", i, (eee.sn_ip_array[i]));
-    }
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-    if (load_supernodes(&eee) > 0)
-#endif
-    supernode2addr(&(eee.supernode), eee.sn_ip_array[eee.sn_idx]);
-
-
-    for (i = 0; i < effectiveargc; ++i)
-    {
-        free(effectiveargv[i]);
-    }
-    free(effectiveargv);
-    effectiveargv = 0;
-    effectiveargc = 0;
-
-    if (!(
-#ifdef __linux__
-          (tuntap_dev_name[0] != 0) &&
-#endif
-          (eee.community_name[0] != 0) && 
-          (ip_addr[0] != 0)))
-    {
-        help();
-    }
-
-    if ((NULL == encrypt_key) && (0 == strlen(eee.keyschedule)))
-    {
-        traceWarning("Encryption is disabled in edge.");
-
-        eee.null_transop = 1;
-    }
-
-
-#ifndef WIN32
-    /* If running suid root then we need to setuid before using the force. */
-    setuid(0);
-    /* setgid( 0 ); */
-#endif
-
-    if (0 == strcmp("dhcp", ip_mode))
-    {
-        traceNormal("Dynamic IP address assignment enabled.");
-
-        eee.dyn_ip_mode = 1;
-    }
-    else
-    {
-        traceNormal("ip_mode='%s'", ip_mode);
-    }
-
-    if (tuntap_open(&(eee.device), tuntap_dev_name, ip_mode, ip_addr, netmask, device_mac, mtu) < 0)
-        return (-1);
-
-#ifndef WIN32
-    if ((userid != 0) || (groupid != 0))
-    {
-        traceNormal("Interface up. Dropping privileges to uid=%d, gid=%d",
-                   (signed int) userid, (signed int) groupid);
-
-        /* Finished with the need for root privileges. Drop to unprivileged user. */
-        setreuid(userid, userid);
-        setregid(groupid, groupid);
-    }
-#endif
-
-    if (local_port > 0)
-        traceNormal("Binding to local port %d", (signed int) local_port);
-
-    if (encrypt_key)
-    {
-        if (edge_init_twofish(&eee, (uint8_t *) (encrypt_key), strlen(encrypt_key)) < 0)
-        {
-            fprintf(stderr, "Error: twofish setup failed.\n");
-            return (-1);
-        }
-    }
-    else if (strlen(eee.keyschedule) > 0)
-    {
-        if (edge_init_keyschedule(&eee) != 0)
-        {
-            fprintf(stderr, "Error: keyschedule setup failed.\n");
-            return (-1);
-        }
-
-    }
-    /* else run in NULL mode */
-
-
-    eee.udp_sock = open_socket(local_port, 1 /*bind ANY*/);
-    if (eee.udp_sock < 0)
-    {
-        traceError("Failed to bind main UDP port %u", (signed int) local_port);
-        return (-1);
-    }
-
-    eee.udp_mgmt_sock = open_socket(mgmt_port, 0 /* bind LOOPBACK*/);
-
-    if (eee.udp_mgmt_sock < 0)
-    {
-        traceError("Failed to bind management UDP port %u", (unsigned int) N2N_EDGE_MGMT_PORT);
-        return (-1);
-    }
-
-
-    traceNormal("edge started");
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-
-    eee.snm_sock = open_socket(snm_port, 1 /*bind ANY*/);
-
-    if (eee.snm_sock < 0)
-    {
-        traceError("Failed to bind SNM UDP port %d", snm_port);
-        return(-1);
-    }
-
-    if (eee.snm_discovery_state == N2N_SNM_STATE_DISCOVERY)
-    {
-        /* send requests to all supernodes */
-        struct sn_info *sni = NULL;
-
-        N2N_LIST_FOR_EACH_ENTRY(sni, &eee.supernodes.head)
-        {
-            edge_send_snm_req(&eee, &sni->sn);
-        }
-    }
-
-#else
-
-    update_supernode_reg(&eee, time(NULL));
-
-#endif
-
-    return run_loop(&eee);
-}
 
 static int run_loop(n2n_edge_t *eee)
 {
@@ -2670,7 +1897,7 @@ static int run_loop(n2n_edge_t *eee)
      * readFromIPSocket() or readFromTAPSocket()
      */
 
-    while(keep_running)
+    while (keep_running)
     {
         int             rc, max_sock = 0;
         fd_set          socket_mask;
@@ -2690,7 +1917,7 @@ static int run_loop(n2n_edge_t *eee)
         max_sock = max(max_sock, eee->snm_sock);
 #endif
 
-        wait_time.tv_sec = SOCKET_TIMEOUT_INTERVAL_SECS;
+        wait_time.tv_sec  = SOCKET_TIMEOUT_INTERVAL_SECS;
         wait_time.tv_usec = 0;
 
         rc = select(max_sock + 1, &socket_mask, NULL, NULL, &wait_time);
@@ -2775,12 +2002,350 @@ static int run_loop(n2n_edge_t *eee)
     send_deregister(eee, &(eee->supernode));
 #endif
 
-    closesocket(eee->udp_sock);
+    closesocket(eee->udp_sock);//TODO move to deinit
     tuntap_close(&(eee->device));
 
     edge_deinit(eee);
 
     return (0);
+}
+
+
+/******************************************************************************
+ *
+ * COMMAND LINE ARGUMENTS
+ *
+ */
+
+static const struct option long_options[] = {
+  { "community",       required_argument, NULL, 'c' },
+  { "supernode-list",  required_argument, NULL, 'l' },
+  { "tun-device",      required_argument, NULL, 'd' },
+  { "euid",            required_argument, NULL, 'u' },
+  { "egid",            required_argument, NULL, 'g' },
+  { "verbose",         no_argument,       NULL, 'v' },
+  { "help"   ,         no_argument,       NULL, 'h' },
+  { NULL,              0,                 NULL,  0  }
+};
+
+
+static void help()
+{
+    print_n2n_version();
+
+    printf("edge "
+#if defined(N2N_CAN_NAME_IFACE)
+     "-d <tun device> "
+#endif /* #if defined(N2N_CAN_NAME_IFACE) */
+     "-a [static:|dhcp:]<tun IP address> "
+     "-c <community> "
+     "[-k <encrypt key> | -K <key file>] "
+     "[-s <netmask>] "
+#if defined(N2N_HAVE_SETUID)
+     "[-u <uid> -g <gid>]"
+#endif /* #ifndef N2N_HAVE_SETUID */
+
+#if defined(N2N_HAVE_DAEMON)
+     "[-f]"
+#endif /* #if defined(N2N_HAVE_DAEMON) */
+     "[-m <MAC address>]"
+     "\n"
+     "-l <supernode host:port> "
+     "[-p <local port>] [-M <mtu>] "
+     "[-r] [-E] [-v] [-t <mgmt port>] [-b] [-h]\n\n");
+
+#ifdef __linux__
+    printf("-d <tun device>          | tun device name\n");
+#endif
+
+    printf("-a <mode:address>        | Set interface address. For DHCP use '-r -a dhcp:0.0.0.0'\n");
+    printf("-c <community>           | n2n community name the edge belongs to.\n");
+    printf("-k <encrypt key>         | Encryption key (ASCII) - also N2N_KEY=<encrypt key>. Not with -K.\n");
+    printf("-K <key file>            | Specify a key schedule file to load. Not with -k.\n");
+    printf("-s <netmask>             | Edge interface netmask in dotted decimal notation (255.255.255.0).\n");
+    printf("-l <supernode host:port> | Supernode IP:port\n");
+    printf("-b                       | Periodically resolve supernode IP\n");
+    printf("                         : (when supernodes are running on dynamic IPs)\n");
+    printf("-p <local port>          | Fixed local UDP port.\n");
+#ifndef WIN32
+    printf("-u <UID>                 | User ID (numeric) to use when privileges are dropped.\n");
+    printf("-g <GID>                 | Group ID (numeric) to use when privileges are dropped.\n");
+#endif /* ifndef WIN32 */
+#ifdef N2N_HAVE_DAEMON
+    printf("-f                       | Do not fork and run as a daemon; rather run in foreground.\n");
+#endif /* #ifdef N2N_HAVE_DAEMON */
+    printf("-m <MAC address>         | Fix MAC address for the TAP interface (otherwise it may be random)\n"
+           "                         : eg. -m 01:02:03:04:05:06\n");
+    printf("-M <mtu>                 | Specify n2n MTU of edge interface (default %d).\n",
+           DEFAULT_MTU);
+    printf("-r                       | Enable packet forwarding through n2n community.\n");
+    printf("-E                       | Accept multicast MAC addresses (default=drop).\n");
+    printf("-v                       | Make more verbose. Repeat as required.\n");
+    printf("-t                       | Management UDP Port (for multiple edges on a machine).\n");
+
+    printf("\nEnvironment variables:\n");
+    printf("  N2N_KEY                | Encryption key (ASCII). Not with -K or -k.\n" );
+
+    exit(0);
+}
+
+
+static void read_args(int argc, char *argv[], n2n_edge_t *eee, boot_helper_t *boot_helper)
+{
+    // TUNTAP: tuntap_dev_name, ip_mode, ip_addr, netmask, device_mac, mtu
+    int     opt;
+    //char    tuntap_dev_name[N2N_IFNAMSIZ] = "edge0";
+    int     got_s = 0;
+
+    char    device_mac[N2N_MACNAMSIZ] = "";
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    const char *optstring = "K:k:a:bc:Eu:g:m:M:s:S:d:l:p:fvhrt:";
+#else
+    const char *optstring = "K:k:a:bc:Eu:g:m:M:s:d:l:p:fvhrt:";
+#endif
+
+    effective_args_t effective_args = { .argc = 0, .argv = NULL };
+    build_effective_args(argc, argv, &effective_args);
+
+
+    optarg = NULL;
+    while ((opt = getopt_long(effective_args.argc, effective_args.argv,
+                              optstring, long_options, NULL)) != EOF)
+    {
+        switch (opt)
+        {
+
+        /* N2N protocols parameters */
+
+        case 'c': /* community as a string */
+        {
+            memset(eee->community_name, 0, N2N_COMMUNITY_SIZE);
+            strncpy((char *) eee->community_name, optarg, N2N_COMMUNITY_SIZE);
+            break;
+        }
+        case 'l': /* supernode-list */
+        {
+            if (eee->sn_num == N2N_EDGE_NUM_SUPERNODES)
+            {
+                fprintf(stderr, "Too many supernodes!\n");
+                exit(1);
+            }
+
+            if (0 != my_sock_from_cstr(&eee->my_supernodes[eee->sn_num], optarg))
+            {
+                fprintf(stderr, "Wrong supernode parameter: %s (Hint: -l <host:port>)", optarg);
+                exit(1);
+            }
+
+
+            strncpy(eee->sn_ip_array[eee->sn_num], optarg, N2N_EDGE_SN_HOST_SIZE);
+
+            traceDebug("Adding supernode[%u] = %s\n", (unsigned int) eee->sn_num, eee->sn_ip_array[eee->sn_num]);
+            ++eee->sn_num;
+            break;
+        }
+        case 'b':
+        {
+            eee->re_resolve_supernode_ip = 1;
+            break;
+        }
+
+        /* Network parameters */
+
+        case 'a': /* IP address and mode of TUNTAP interface */
+        {
+            if (0 != scan_address(&eee->device.ip_addr, &eee->ip_mode, optarg))
+            {
+                fprintf(stderr, "Error: wrong address: \"%s\".\n", optarg);
+                exit(1);
+            }
+            if (eee->ip_mode == N2N_IPM_DHCP)
+            {
+                traceNormal("Dynamic IP address assignment enabled.");
+                eee->dyn_ip_mode = 1;
+            }
+            break;
+        }
+        case 's': /* Subnet Mask */
+        {
+            if (0 != got_s)
+            {
+                traceWarning("Multiple subnet masks supplied.");
+            }
+            if (0 != scan_address(&eee->device.device_mask, NULL, optarg))
+            {
+                fprintf(stderr, "Error: wrong mask address: %s.\n", optarg);
+                exit(1);
+            }
+            //strncpy(netmask, optarg, N2N_NETMASK_STR_SIZE);
+            got_s = 1;
+            break;
+        }
+        case 'p':
+        {
+            boot_helper->local_port = atoi(optarg);
+            break;
+        }
+        case 't':
+        {
+            boot_helper->mgmt_port = atoi(optarg);
+            break;
+        }
+#ifdef N2N_MULTIPLE_SUPERNODES
+        case 'S':
+        {
+            snm_port = atoi(optarg);
+            break;
+        }
+#endif
+        case 'r': /* enable packet routing across n2n endpoints */
+        {
+            eee->allow_routing = 1;
+            break;
+        }
+        case 'E': /* multicast ethernet addresses accepted. */
+        {
+            eee->drop_multicast = 0;
+            traceDebug("Enabling ethernet multicast traffic\n");
+            break;
+        }
+
+        /* TUNTAP parameters */
+
+#if defined(N2N_CAN_NAME_IFACE)
+        case 'd': /* TUNTAP name */
+        {
+            //strncpy(tuntap_dev_name, optarg, N2N_IFNAMSIZ);
+            strncpy(eee->device.dev_name, optarg, N2N_IFNAMSIZ);
+            break;
+        }
+#endif
+        case 'm': /* TUNTAP MAC address */
+        {
+            //TODO strncpy(eee->device.mac_addr, optarg, N2N_MACNAMSIZ);
+            str2mac(eee->device.mac_addr, optarg);
+            break;
+        }
+        case 'M': /* TUNTAP MTU */
+        {
+            eee->device.mtu = atoi(optarg);
+            break;
+        }
+
+        /* Encryption parameters */
+
+        case 'k': /* encrypt key */
+        {
+            if (strlen(eee->keyschedule) > 0)
+            {
+                fprintf(stderr, "Error: -K and -k options are mutually exclusive.\n");
+                exit(1);
+            }
+
+            boot_helper->encrypt_key = strdup(optarg);
+            traceDebug("encrypt_key = '%s'\n", boot_helper->encrypt_key);
+            break;
+        }
+        case 'K':
+        {
+            if (boot_helper->encrypt_key)
+            {
+                fprintf(stderr, "Error: -K and -k options are mutually exclusive.\n");
+                exit(1);
+            }
+
+            strncpy(eee->keyschedule, optarg, N2N_PATHNAME_MAXLEN - 1);
+            eee->keyschedule[N2N_PATHNAME_MAXLEN - 1] = 0; /* strncpy does not add NULL if the source has no NULL. */
+
+            traceDebug("keyfile = '%s'\n", eee->keyschedule);
+            fprintf(stderr, "keyfile = '%s'\n", eee->keyschedule);
+            break;
+        }
+
+        /* Miscellaneous parameters */
+
+#ifdef N2N_HAVE_DAEMON
+        case 'f': /* do not fork as daemon */
+        {
+            eee->daemon = 0;
+            break;
+        }
+#endif /* #ifdef N2N_HAVE_DAEMON */
+
+#ifndef WIN32
+        case 'u': /* unprivileged uid */
+        {
+            boot_helper->user_id = atoi(optarg);
+            break;
+        }
+        case 'g': /* unprivileged gid */
+        {
+            boot_helper->group_id = atoi(optarg);
+            break;
+        }
+#endif /* #ifdef WIN32 */
+
+        case 'v': /* verbose */
+        {
+            /* do 2 -v flags to increase verbosity to DEBUG level*/
+            ++traceLevel;
+            break;
+        }
+        case 'h': /* help */
+        {
+            help();
+            break;
+        }
+        } /* end switch */
+    }
+
+    destroy_effective_args(&effective_args);
+
+
+    if (!(
+#ifdef __linux__
+          (eee->device.dev_name[0] != 0) &&
+#endif
+          (eee->community_name[0] != 0) &&
+          (eee->device.ip_addr != 0)))
+    {
+        help();
+    }
+}
+
+
+/**
+ * Entry point to program from kernel.
+ */
+int main(int argc, char *argv[])
+{
+    setvbuf(stdout, NULL, _IONBF, 0);//TODO debug
+    setvbuf(stderr, NULL, _IONBF, 0);
+    //char    device_mac[N2N_MACNAMSIZ] = "";
+
+    n2n_edge_t eee; /* single instance for this program */
+
+    boot_helper_t boot_helper;
+
+    if (edge_init(&eee) != 0)
+    {
+        traceError("Failed in edge_init");
+        exit(1);
+    }
+
+    initBootHelper(&boot_helper);
+    read_args(argc, argv, &eee, &boot_helper);//TODO check
+
+    if (edge_start(&eee, &boot_helper) != 0)
+    {
+        traceError("Failed in edge_start");
+        exit(1);
+    }
+
+    destroyBootHelper(&boot_helper);
+
+    return run_loop(&eee);
 }
 
 
