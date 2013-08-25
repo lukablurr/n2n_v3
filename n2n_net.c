@@ -10,11 +10,15 @@
 
 #include "n2n.h"//TODO
 #include "n2n_net.h"
+#include "n2n_log.h"
 
 
 
-/* *********************************************** */
-/* Layer 2 */
+/******************************************************************************
+ *
+ * LAYER 2
+ *
+ */
 
 static const n2n_mac_t broadcast_addr =
         { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
@@ -24,6 +28,15 @@ static const n2n_mac_t multicast_addr =
 
 static const n2n_mac_t ipv6_multicast_addr =
         { 0x33, 0x33, 0x00, 0x00, 0x00, 0x00 }; /* First 2 bytes are meaningful */
+
+
+int is_empty_mac(const uint8_t *mac)
+{
+    const n2n_mac_t empty_addr =
+            { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+    return (0 == memcmp(mac, empty_addr, ETH_ADDR_LEN));
+}
 
 
 int is_broadcast_mac(const uint8_t *mac)
@@ -102,9 +115,11 @@ extern int str2mac(uint8_t *outmac /* 6 bytes */, const char *s)
 }
 
 
-
-/* *********************************************** */
-/* Layer 3 */
+/******************************************************************************
+ *
+ * LAYER 3
+ *
+ */
 
 int is_empty_ip_address(const n2n_sock_t *sock)
 {
@@ -170,9 +185,11 @@ char* intoa(uint32_t /* host order */addr, char *buf, uint16_t buf_len)
 }
 
 
-
-/* ************************************** */
-/* Layer 4 */
+/******************************************************************************
+ *
+ * LAYER 4
+ *
+ */
 
 SOCKET open_socket(int local_port, int bind_any)
 {
@@ -348,8 +365,187 @@ extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str)
 }
 
 
+static int extract_ipv4(n2n_sock_t *out, const char* str_orig)
+{
+    int retval = inet_pton(AF_INET, str_orig, out->addr.v4);
+    if (retval != 1)
+    {
+        traceError("Error extracting IPv4 address: %s", str_orig);
+    }
+    return (retval != 1);
+}
 
 
+static int extract_ipv6(n2n_sock_t *out, const char* str_orig)
+{
+    int retval = inet_pton(AF_INET6, str_orig, out->addr.v6);
+    if (retval != 1)
+    {
+        traceError("Error extracting IPv6 address: %s", str_orig);
+    }
+    return (retval != 1);
+}
+
+
+extern int my_sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str_orig)
+{
+    int retval;
+
+    n2n_sock_str_t str;
+    memcpy(str, str_orig, sizeof(n2n_sock_str_t));
+
+
+    char *last_colon_pos = strrchr(str, ':');
+
+    if (strchr(str, ':') == last_colon_pos)
+    {
+        out->family = AF_INET;
+
+        if (last_colon_pos) //TODO
+        {
+            *last_colon_pos = '\0';
+            out->port = atoi(last_colon_pos + 1);
+        }
+
+        retval = extract_ipv4(out, str);
+    }
+    else
+    {
+        out->family = AF_INET6;
+
+        char *l_brack_pos = strchr(str, '[');
+        if (l_brack_pos)
+        {
+            char *r_brack_pos = strchr(str, ']');
+            if (!r_brack_pos)
+                return -1;//TODO
+
+            if (r_brack_pos < last_colon_pos) //TODO
+            {
+                //*last_colon_pos = '\0';
+                out->port = atoi(last_colon_pos + 1);
+            }
+
+            *r_brack_pos = 0;
+            retval = extract_ipv6(out, l_brack_pos + 1);
+        }
+        else
+            retval = extract_ipv6(out, str);
+    }
+
+    return retval;
+}
+
+
+/******************************************************************************
+ *
+ * TUNNELING
+ *
+ */
+
+/**
+ * Find the address and IP mode for the tuntap device.
+ *
+ *  s is one of these forms:
+ *
+ *  <host> := <hostname> | A.B.C.D
+ *
+ *  <host> | static:<host> | dhcp:<host>
+ *
+ *  If the mode is present (colon required) then fill ip_mode with that value
+ *  otherwise do not change ip_mode. Fill ip_mode with everything after the
+ *  colon if it is present; or s if colon is not present.(TODO - update)
+ *
+ *  return 0 on success and -1 on error
+ */
+int scan_address(uint32_t *ip_addr, ip_mode_t *ip_mode, const char *s)
+{
+    int retval = -1;//TODO use it?
+    char *p;
+
+    if ((NULL == s) || (NULL == ip_addr))
+    {
+        return -1;
+    }
+
+    p = strchr(s, ':');
+
+    if (p)
+    {
+        /* colon is present */
+        size_t host_off = p - s;
+
+        if (ip_mode)
+        {
+            if (0 == strncmp(s, "static", host_off))
+                *ip_mode = N2N_IPM_STATIC;
+
+            else if (0 == strncmp(s, "dhcp", host_off))
+                *ip_mode = N2N_IPM_DHCP;
+
+            else
+            {
+                *ip_mode = N2N_IPM_NONE;
+                traceError("Unknown IP mode: %.*s\n", host_off, s);
+                return -1;
+            }
+        }
+
+        /* move to IP position */
+        s = p + 1;
+    }
+
+    *ip_addr = inet_addr(s);//TODO use a wrapping function
+
+    return 0;
+}
+
+
+
+/******************************************************************************
+ *
+ * TESTING - TODO to be moved
+ *
+ */
+/*
+int main()
+{
+#define ENTRIES_NUM 14
+    const char *entries[ENTRIES_NUM] = {
+            "1.2.3.4",
+            "1.2.3.4:4000",
+            "226.000.000.037",
+            "0x7f.1",
+            "0:0:0:0:0:0:0:0",
+            "1:0:0:0:0:0:0:8",
+            "0:0:0:0:0:FFFF:204.152.189.116",
+            "[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443",
+            "[2001:db8:85a3:8d3:1319:8a2e:370:7348]",
+            "2001:db8:85a3:8d3:1319:8a2e:370:7348:443",
+            "::",
+            "::/128",
+            "fc00::",
+            "fc00::/7"
+    };
+    int i;
+    n2n_sock_str_t sockstr;
+
+    for (i = 0; i < ENTRIES_NUM; i++)
+    {
+        n2n_sock_t sock;
+        memset(&sock, 0, sizeof(n2n_sock_t));
+
+        int r = my_sock_from_cstr(&sock, entries[i]);
+
+        printf("[%2d] = %s --> %s %s\n", i, entries[i],
+               (r == 0 ? "PASSED" : "FAILED"),
+               (r == 0 ? sock_to_cstr(sockstr, &sock) : ""));
+    }
+
+
+
+    return 0;
+}*/
 
 
 
