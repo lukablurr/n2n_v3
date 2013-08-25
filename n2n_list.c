@@ -5,56 +5,55 @@
  *      Author: Costin Lupu
  */
 
-
-#include <stdlib.h>
-
 #include "n2n_list.h"
+#include "n2n_log.h"
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 
 
-void list_add(struct n2n_list *head, struct n2n_list *new)
-{
-    new->next  = head->next;
-    head->next = new;
-}
-
-/** Purge all items from the list and return the number
- *  of items that were removed.
+/**
+ * Return the number of elements in the list.
  */
-size_t list_clear(struct n2n_list *head)
+size_t list_size(const n2n_list_head_t *head)
 {
     size_t count = 0;
-    struct n2n_list *scan = head->next;
-
-    while (scan)
-    {
-        struct n2n_list *crt = scan;
-        scan = scan->next;
-        free(crt); /* free list entry */
-        count++;
-    }
-    head->next = NULL;
-
-    return count;
-}
-
-/** Return the number of elements in the list.
- *
- */
-size_t list_size(const struct n2n_list *head)
-{
-    size_t count = 0;
-    LIST_FOR_EACH(head, head)
+    const n2n_list_node_t *node = NULL;
+    LIST_FOR_EACH_NODE(head, node)
     {
         ++count;
     }
     return count;
 }
 
-void list_reverse(struct n2n_list *head)
+/**
+ * Purge all items from the list and return the number
+ * of items that were removed.
+ */
+size_t list_clear(n2n_list_head_t *head)
 {
-    struct n2n_list *aux = head->next, *next = NULL;
-    head->next = NULL;
+    size_t count = 0;
+    n2n_list_node_t *scan = LIST_FIRST_NODE(head);
+
+    while (scan)
+    {
+        n2n_list_node_t *crt = scan;
+        scan = scan->next;
+        free(crt); /* free list entry */
+        count++;
+    }
+    LIST_FIRST_NODE(head) = NULL;
+
+    return count;
+}
+
+void list_reverse(n2n_list_head_t *head)
+{
+    n2n_list_node_t *aux = head->node.next;
+    n2n_list_node_t *next = NULL;
+    head->node.next = NULL;
 
     while (aux)
     {
@@ -69,16 +68,18 @@ void list_reverse(struct n2n_list *head)
  * SORTING
  */
 
-static void merge(struct n2n_list *left,  size_t left_size,
-                  struct n2n_list *right, size_t right_size,
-                  struct n2n_list *sorted,
-                  cmp_func cmp);
+static void merge(n2n_list_node_t *left,  size_t left_size,
+                  n2n_list_node_t *right, size_t right_size,
+                  n2n_list_head_t *merged,
+                  cmp_func_t cmp);
 
-static void merge_sort(struct n2n_list *list, size_t size, cmp_func func)//TODO may just sort first 'size' entries
+static void merge_sort(n2n_list_head_t *head, size_t size, cmp_func_t func)//TODO may just sort first 'size' entries
 {
     size_t i, middle;
-    struct n2n_list left, right;
-    struct n2n_list *entry = NULL;
+    LIST_HEAD(left);
+    LIST_HEAD(right);
+    LIST_HEAD(merged);
+    n2n_list_node_t *left_last = NULL;
 
     if (size < 2)
         return;
@@ -86,78 +87,68 @@ static void merge_sort(struct n2n_list *list, size_t size, cmp_func func)//TODO 
 
     middle = size / 2;
 
-    LIST_FIRST(&left) = LIST_FIRST(list);
-    for (i = 0, entry = &left; i < middle; i++)
+    LIST_FIRST_NODE(&left) = LIST_FIRST_NODE(head);
+    for (i = 0, left_last = LIST_FIRST_NODE(&left); i < middle - 1; i++)
     {
-        entry = entry->next;
+        left_last = left_last->next;
     }
 
-    LIST_FIRST(&right) = entry->next;
-    entry->next = NULL;
+    LIST_FIRST_NODE(&right) = left_last->next;
+    left_last->next = NULL;
 
-    merge_sort(&left,  middle, func);
+    merge_sort(&left, middle, func);
     merge_sort(&right, size - middle, func);
+    merge(LIST_FIRST_NODE(&left), middle, LIST_FIRST_NODE(&right), size - middle, &merged, func);
 
-    LIST_FIRST(list) = NULL;
-    merge(&left, middle, &right, size - middle, list, func);
+    LIST_FIRST_NODE(head) = LIST_FIRST_NODE(&merged);
 }
 
-static void merge(struct n2n_list *left,  size_t left_size,
-                  struct n2n_list *right, size_t right_size,
-                  struct n2n_list *sorted,
-                  cmp_func cmp)
+static void merge(n2n_list_node_t *left,  size_t left_size,
+                  n2n_list_node_t *right, size_t right_size,
+                  n2n_list_head_t *merged,
+                  cmp_func_t cmp)
 {
-    struct n2n_list *next = NULL;
+    n2n_list_node_t *last_added = &merged->node;
 
-    while (left_size > 0 || right_size > 0)
+    while (left_size > 0 && right_size > 0)
     {
-        if (left_size > 0 && right_size > 0)
+        if (cmp(left, right) <= 0)
         {
-            if (cmp(LIST_FIRST(left), LIST_FIRST(right)) <= 0)
-            {
-                next = LIST_FIRST(left)->next;
-                list_add(sorted, LIST_FIRST(left));
-                LIST_FIRST(left) = next;
-                left_size--;
-            }
-            else
-            {
-                next = LIST_FIRST(right)->next;
-                list_add(sorted, LIST_FIRST(right));
-                LIST_FIRST(right) = next;
-                right_size--;
-            }
-        }
-        else if (left_size > 0)
-        {
-            next = LIST_FIRST(left)->next;
-            list_add(sorted, LIST_FIRST(left));
-            LIST_FIRST(left) = next;
+            last_added->next = left;
+            last_added = left;
+            left = left->next;
             left_size--;
         }
-        else if (right_size > 0)
+        else
         {
-            next = LIST_FIRST(right)->next;
-            list_add(sorted, LIST_FIRST(right));
-            LIST_FIRST(right) = next;
+            last_added->next = right;
+            last_added = right;
+            right = right->next;
             right_size--;
         }
     }
 
-    list_reverse(sorted);
+    if (left_size > 0)
+    {
+        last_added->next = left;
+    }
+    else if (right_size > 0)
+    {
+        last_added->next = right;
+    }
 }
 
 
-void list_sort(struct n2n_list *list, cmp_func func)
+void list_sort(n2n_list_head_t *head, cmp_func_t func)
 {
-    size_t size = list_size(list);
-    merge_sort(list, size, func);
+    size_t size = list_size(head);
+    merge_sort(head, size, func);
 }
 
 /********************************************/
 
 
-#include "n2n.h"
+#include <fcntl.h>//TODO remove after fixing file open
 
 
 
@@ -176,9 +167,10 @@ static FILE *open_list_file_for_read(const char *filename)
 #endif
 }
 
-int read_list_from_file(const char *filename, struct n2n_list *list, read_entry_func read_entry)
+int read_list_from_file(const char *filename, n2n_list_head_t *head, rd_entry_func_t rd_entry_func)
 {
     FILE *f = NULL;
+    n2n_list_node_t *new_item = NULL;
 
     traceInfo("opening file %s for reading", filename);
 
@@ -189,27 +181,25 @@ int read_list_from_file(const char *filename, struct n2n_list *list, read_entry_
         return -1;
     }
 
-    struct n2n_list *new_item = NULL;
-
-    while ((new_item = read_entry(f)) != NULL)
+    while ((new_item = rd_entry_func(f)) != NULL)
     {
-        list_add(list, new_item);
+        list_add(head, new_item);
     }
 
-    list_reverse(list);
+    list_reverse(head);
 
     fclose(f);
     return 0;
 
 out_err:
-    list_clear(list);
+    list_clear(head);
     fclose(f);
     return -1;
 }
 
-int write_list_to_file(const char *filename, struct n2n_list *list, write_entry_func write_entry)
+int write_list_to_file(const char *filename, n2n_list_head_t *head, wr_entry_func_t wr_entry_func)
 {
-    struct n2n_list *pos;
+    n2n_list_node_t *node;
 
     FILE *f = fopen(filename, "w");
     if (!f)
@@ -218,9 +208,9 @@ int write_list_to_file(const char *filename, struct n2n_list *list, write_entry_
         return -1;
     }
 
-    LIST_FOR_EACH(pos, list)
+    LIST_FOR_EACH_NODE(head, node)
     {
-        write_entry(f, pos);
+        wr_entry_func(f, node);
     }
 
     fclose(f);
