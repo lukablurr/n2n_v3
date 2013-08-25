@@ -49,7 +49,7 @@ MAN7DIR=$(MANDIR)/man7
 MAN8DIR=$(MANDIR)/man8
 
 N2N_LIB=n2n.a
-N2N_OBJS=n2n.o n2n_net.o n2n_keyfile.o n2n_list.o wire.o minilzo.o twofish.o \
+N2N_OBJS=n2n.o n2n_net.o n2n_keyfile.o n2n_list.o n2n_log.o n2n_utils.o wire.o minilzo.o twofish.o \
          transform_null.o transform_tf.o transform_aes.o
          
 XNIX_OBJS=tuntap_freebsd.o tuntap_netbsd.o tuntap_linux.o tuntap_osx.o version.o
@@ -87,13 +87,13 @@ DOCS=edge.8.gz supernode.1.gz n2n_v2.7.gz
 
 all: $(APPS) $(DOCS)
 
-edge: edge.c $(N2N_LIB) n2n_wire.h n2n.h Makefile
-	$(CC) $(CFLAGS) edge.c $(N2N_LIB) $(LIBS_EDGE) -o edge
+edge: edge.c edge.h edge_mgmt.c edge_mgmt.h $(N2N_LIB) n2n_wire.h n2n.h Makefile
+	$(CC) $(CFLAGS) edge.c edge_mgmt.c $(N2N_LIB) $(LIBS_EDGE) -o edge
 
 test: test.c $(N2N_LIB) n2n_wire.h n2n.h Makefile
 	$(CC) $(CFLAGS) test.c $(N2N_LIB) $(LIBS_EDGE) -o test
 
-supernode: sn.c $(N2N_LIB) n2n.h Makefile
+supernode: sn.c sn.h $(N2N_LIB) n2n.h Makefile
 	$(CC) $(CFLAGS) sn.c $(N2N_LIB) $(LIBS_SN) -o supernode
 
 benchmark: benchmark.c $(N2N_LIB) n2n_wire.h n2n.h Makefile
