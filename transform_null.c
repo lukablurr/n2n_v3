@@ -2,6 +2,9 @@
 
 #include "n2n.h"
 #include "n2n_transforms.h"
+#include "n2n_log.h"
+
+
 
 static int transop_deinit_null(n2n_trans_op_t *arg)
 {

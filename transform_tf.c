@@ -2,6 +2,7 @@
 
 #include "n2n.h"
 #include "n2n_transforms.h"
+#include "n2n_log.h"
 #include "twofish.h"
 #ifndef _MSC_VER
 /* Not included in Visual Studio 2008 */

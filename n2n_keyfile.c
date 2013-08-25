@@ -5,6 +5,7 @@
 
 #include "n2n.h"
 #include "n2n_keyfile.h"
+#include "n2n_log.h"
 #include <errno.h>
 #include <stdio.h>
 #include <time.h>
