@@ -36,8 +36,8 @@ typedef size_t  (*clear_func)  (struct n2n_list *list);
 struct list_ops {
     size_t             item_size;
     rand_func          rand;
-    read_entry_func    read_entry;
-    write_entry_func   write_entry;
+    rd_entry_func_t    read_entry;
+    wr_entry_func_t   write_entry;
 };
 
 
@@ -233,7 +233,7 @@ struct SNM_msg_ops
     size_t     struct_size;
     enc_func   enc;
     dec_func   dec;
-    cmp_func   cmp;
+    cmp_func_t   cmp;
 };
 
 struct SNM_msg_ops SNM_REQ_ops = {
