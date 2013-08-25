@@ -15,7 +15,11 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>
 */
 
+#include "tuntap.h"
 #include "n2n.h"
+#include "n2n_log.h"
+
+
 
 #ifdef __linux__
 
@@ -61,19 +65,22 @@ static void read_mac(char *ifname, n2n_mac_t mac_addr)
  *  @return - negative value on error
  *          - non-negative file-descriptor on success
  */
-int tuntap_open(tuntap_dev *device, 
-                char *dev, /* user-definable interface name, eg. edge0 */
-                const char *address_mode, /* static or dhcp */
-                char *device_ip, 
-                char *device_mask,
-                const char *device_mac,
-                int mtu)
+int tuntap_open(tuntap_dev *device, ip_mode_t ip_mode)
+                //char *dev, /* user-definable interface name, eg. edge0 */
+                //const char *address_mode, /* static or dhcp */
+                //char *device_ip,
+                //char *device_mask,
+                //const char *device_mac,
+                //int mtu)
 {
     char *tuntap_device = "/dev/net/tun";
 #define N2N_LINUX_SYSTEMCMD_SIZE 128
     char buf[N2N_LINUX_SYSTEMCMD_SIZE];
     struct ifreq ifr;
     int rc;
+
+    //TODO
+    ipstr_t ipstr;
 
     device->fd = open(tuntap_device, O_RDWR);
     if (device->fd < 0)
@@ -85,7 +92,7 @@ int tuntap_open(tuntap_dev *device,
     traceEvent(TRACE_NORMAL, "Succesfully open %s\n", tuntap_device);
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI; /* Want a TAP device for layer 2 frames. */
-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+    strncpy(ifr.ifr_name, device->dev_name, IFNAMSIZ);
     rc = ioctl(device->fd, TUNSETIFF, (void *) &ifr);
 
     if (rc < 0)
@@ -98,53 +105,61 @@ int tuntap_open(tuntap_dev *device,
     /* Store the device name for later reuse */
     strncpy(device->dev_name, ifr.ifr_name, MIN(IFNAMSIZ, N2N_IFNAMSIZ));
 
-    if (device_mac && device_mac[0] != '\0')
+    if ( !is_empty_mac(device->mac_addr) )
     {
         /* Set the hw address before bringing the if up. */
+        macstr_t macstr;
         snprintf(buf, sizeof(buf), "/sbin/ifconfig %s hw ether %s",
-                 ifr.ifr_name, device_mac);
+                 ifr.ifr_name, macaddr_str(macstr, device->mac_addr));
         system(buf);
         traceInfo("Setting MAC: %s", buf);
     }
 
-    if (0 == strncmp("dhcp", address_mode, 5))
+
+    intoa(device->ip_addr, ipstr, sizeof(ipstr));
+
+    if (ip_mode == N2N_IPM_DHCP)
     {
         snprintf(buf, sizeof(buf), "/sbin/ifconfig %s %s mtu %d up",
-                 ifr.ifr_name, device_ip, mtu);
+                 ifr.ifr_name, ipstr, device->mtu);
     }
     else
     {
+        ipstr_t maskstr;
+        strcpy((char *) maskstr, inet_ntoa( *(  (struct in_addr *) &device->device_mask)  ));//TODO
+        //intoa(device->device_mask, maskstr, sizeof(maskstr));
+
         snprintf(buf, sizeof(buf), "/sbin/ifconfig %s %s netmask %s mtu %d up",
-                 ifr.ifr_name, device_ip, device_mask, mtu);
+                 ifr.ifr_name, ipstr, maskstr, device->mtu);
     }
 
-    system(buf);
     traceInfo("Bringing up: %s", buf);
+    system(buf);
 
-    device->ip_addr = inet_addr(device_ip);
-    device->device_mask = inet_addr(device_mask);
-    read_mac(dev, device->mac_addr);
+    //device->ip_addr = inet_addr(device_ip);
+    //device->device_mask = inet_addr(device_mask);
+    read_mac(device->dev_name, device->mac_addr);
     return (device->fd);
 }
 
-int tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len)
+int tuntap_read(tuntap_dev *device, unsigned char *buf, int len)
 {
-    return (read(tuntap->fd, buf, len));
+    return (read(device->fd, buf, len));
 }
 
-int tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len)
+int tuntap_write(tuntap_dev *device, unsigned char *buf, int len)
 {
-    return (write(tuntap->fd, buf, len));
+    return (write(device->fd, buf, len));
 }
 
-void tuntap_close(struct tuntap_dev *tuntap)
+void tuntap_close(tuntap_dev *device)
 {
-    close(tuntap->fd);
+    close(device->fd);
 }
 
 /* Fill out the ip_addr value from the interface. Called to pick up dynamic
  * address changes. */
-void tuntap_get_address(struct tuntap_dev *tuntap)
+void tuntap_get_address(tuntap_dev *device)
 {
     FILE *fp = NULL;
     ssize_t nread = 0;
@@ -157,7 +172,7 @@ void tuntap_get_address(struct tuntap_dev *tuntap)
      * line and the returned string will be empty. */
     snprintf(buf, sizeof(buf),
              "/sbin/ifconfig %s | /bin/sed -e '/inet addr:/!d' -e 's/^.*inet addr://' -e 's/ .*$//'",
-             tuntap->dev_name);
+             device->dev_name);
     fp = popen(buf, "r");
     if (fp)
     {
@@ -168,7 +183,7 @@ void tuntap_get_address(struct tuntap_dev *tuntap)
 
         traceInfo("ifconfig address = %s", buf);
 
-        tuntap->ip_addr = inet_addr(buf);
+        device->ip_addr = inet_addr(buf);
     }
 }
 
