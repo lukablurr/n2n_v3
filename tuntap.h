@@ -8,7 +8,24 @@
 #ifndef TUNTAP_H_
 #define TUNTAP_H_
 
+/*
+   tunctl -t tun0
+   tunctl -t tun1
+   ifconfig tun0 1.2.3.4 up
+   ifconfig tun1 1.2.3.5 up
+   ./edge -d tun0 -l 2000 -r 127.0.0.1:3000 -c hello
+   ./edge -d tun1 -l 3000 -r 127.0.0.1:2000 -c hello
+
+
+   tunctl -u UID -t tunX
+*/
+
 #include "n2n_net.h"
+
+#ifdef __linux__
+# include <linux/if_tun.h>
+# define N2N_CAN_NAME_IFACE 1
+#endif /* #ifdef __linux__ */
 
 
 /* N2N_IFNAMSIZ is needed on win32 even if dev_name is not used after declaration */
@@ -16,8 +33,6 @@
 
 
 #ifndef WIN32
-
-#include <stdint.h>
 
 typedef struct tuntap_dev
 {
