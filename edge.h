@@ -71,8 +71,7 @@ struct n2n_edge
 
     size_t              sn_idx;                 /**< Currently active supernode. */
     size_t              sn_num;                 /**< Number of supernode addresses defined. */
-    n2n_sn_name_t       sn_ip_array[N2N_EDGE_NUM_SUPERNODES];//TODO
-    n2n_sock_t          my_supernodes[N2N_EDGE_NUM_SUPERNODES];//TODO
+    n2n_sock_t          supernodes[N2N_EDGE_NUM_SUPERNODES];//TODO
 
     int                 sn_wait;                /**< Whether we are waiting for a supernode response. */
 
@@ -84,9 +83,7 @@ struct n2n_edge
     int                 udp_mgmt_sock;          /**< socket for status info. */
 
     tuntap_dev          device;                 /**< All about the TUNTAP device */
-    int                 dyn_ip_mode;            /**< Interface IP address is dynamically allocated, eg. DHCP. */
-    //TODO
-    ip_mode_t           ip_mode;
+    ip_mode_t           ip_mode;                /**< Interface IP address allocation mode (eg. static, DHCP). */
     int                 allow_routing;          /**< Accept packet no to interface address. */
     int                 drop_multicast;         /**< Multicast ethernet addresses. */
 
