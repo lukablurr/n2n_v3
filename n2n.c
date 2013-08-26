@@ -152,7 +152,7 @@ peer_info_t *find_peer_by_mac(n2n_list_head_t *peers, const n2n_mac_t mac)
 
     N2N_LIST_FOR_EACH(peers, peer)
     {
-        if (0 == memcmp(mac, peer->mac_addr, N2N_MAC_SIZE))//TODO
+        if (mac_equal(mac, peer->mac_addr))//TODO
             return peer;
     }
 
@@ -167,7 +167,7 @@ peer_info_t *find_peer_by_mac_for_removal(n2n_list_head_t *peers, const n2n_mac_
 
     N2N_LIST_FOR_EACH(peers, peer)
     {
-        if (0 == memcmp(mac, peer->mac_addr, N2N_MAC_SIZE))//TODO
+        if (mac_equal(mac, peer->mac_addr))//TODO
             return peer;
 
         *prev = peer;
