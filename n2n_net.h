@@ -90,6 +90,11 @@ int is_ipv6_multicast_mac(const uint8_t *mac);
 
 extern uint8_t is_multi_broadcast_mac(const uint8_t *dest_mac);
 
+static inline int mac_equal(const n2n_mac_t a, const n2n_mac_t b)
+{
+    return (0 == memcmp(a, b, ETH_ADDR_LEN));
+}
+
 extern char *macaddr_str(macstr_t buf, const n2n_mac_t mac);
 extern int   str2mac(uint8_t *outmac /* 6 bytes */, const char *s);
 
@@ -130,7 +135,7 @@ extern char *intoa(uint32_t addr, char *buf, uint16_t buf_len);
 struct n2n_sock
 {
     uint8_t     family;         /* AF_INET or AF_INET6; or 0 if invalid */
-    uint16_t    port;           /* host order */
+    uint16_t    port;           /* host order TODO */
     union
     {
         uint8_t v6[IPV6_SIZE];  /* byte sequence */
