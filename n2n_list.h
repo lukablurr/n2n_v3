@@ -98,7 +98,7 @@ typedef struct n2n_list_head n2n_list_head_t;
  * list.  It can be prepended by "static" to define a static list_head.
  */
 #define LIST_HEAD(name) \
-    n2n_list_head_t name = { .node = { .next = NULL } }
+    n2n_list_head_t name = {{ NULL }}
 
 /**
  * list_head_init - initialize a list_head
