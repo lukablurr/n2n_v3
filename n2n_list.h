@@ -11,6 +11,21 @@
 
 #include <stddef.h>
 
+#ifdef _MSC_VER
+# define inline  __inline
+# if _MSC_VER < 1600
+#  define NO_TYPEOF
+# else
+#  define typeof  decltype
+# endif
+#endif
+
+
+/**
+ * CONTAINER_* macros adapted from:
+ * http://ccodearchive.net/info/container_of.html
+ * Author: Rusty Russell <rusty@rustcorp.com.au>
+ */
 
 /**
  * CONTAINER_OF - get pointer to enclosing structure
@@ -20,12 +35,27 @@
  *
  * Given a pointer to a member of a structure, this macro does pointer
  * subtraction to return the pointer to the enclosing type.
- *
- * Adapted from: http://ccodearchive.net/info/container_of.html
- * Author: Rusty Russell <rusty@rustcorp.com.au>
  */
 #define CONTAINER_OF(member_ptr, containing_type, member) \
      ((containing_type *) ((char *)(member_ptr) - offsetof(containing_type, member))
+
+/**
+ * CONTAINER_OFF_VAR - get offset of a field in enclosing structure
+ * @container_var: a pointer to a container structure
+ * @member: the name of a member within the structure.
+ *
+ * Given (any) pointer to a structure and a its member name, this
+ * macro does pointer subtraction to return offset of member in a
+ * structure memory layout.
+ *
+ */
+#ifdef NO_TYPEOF
+#define CONTAINER_OFF_VAR(var, member) \
+    ((char *) &(var)->member - (char *) (var))
+#else
+#define CONTAINER_OFF_VAR(var, member) \
+    offsetof(typeof(*var), member)
+#endif
 
 
 
@@ -177,7 +207,7 @@ static inline n2n_list_node_t *list_node_from_off_(void *ptr, size_t off)
  * a for loop, so you can break and continue as normal.
  */
 #define LIST_FOR_EACH(head, i, member) \
-    LIST_FOR_EACH_OFF(head, i, offsetof(typeof(*i), member))
+    LIST_FOR_EACH_OFF(head, i, CONTAINER_OFF_VAR(i, member))
 
 /**
  * LIST_FOR_EACH_SAFE_OFF - iterate through a list of memory regions, maybe
@@ -209,7 +239,7 @@ static inline n2n_list_node_t *list_node_from_off_(void *ptr, size_t off)
  * @nxt is used to hold the next element, so you can delete @i from the list.
  */
 #define LIST_FOR_EACH_SAFE(head, i, nxt, member) \
-    LIST_FOR_EACH_SAFE_OFF(head, i, nxt, offsetof(typeof(*i), member))
+    LIST_FOR_EACH_SAFE_OFF(head, i, nxt, CONTAINER_OFF_VAR(i, member))
 
 /**
  * End of adapted code
