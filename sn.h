@@ -8,9 +8,8 @@
 #ifndef SN_H_
 #define SN_H_
 
+#include "n2n.h"
 #include "n2n_list.h"
-#include <stdint.h>
-#include <time.h>
 
 
 #define N2N_SN_LPORT_DEFAULT            7654

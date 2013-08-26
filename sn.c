@@ -8,7 +8,6 @@
  */
 
 #include "sn.h"
-#include "n2n.h"
 #include "n2n_log.h"
 
 #ifdef N2N_MULTIPLE_SUPERNODES
