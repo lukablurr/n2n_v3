@@ -18,13 +18,13 @@
 
 static int try_forward(n2n_sn_t *sss,
                        const n2n_common_t *cmn,
-                       const n2n_mac_t dstMac,
+                       const n2n_mac_t dst_mac,
                        const uint8_t *pktbuf,
                        size_t pktsize);
 
 static int try_broadcast(n2n_sn_t *sss,
                          const n2n_common_t *cmn,
-                         const n2n_mac_t srcMac,
+                         const n2n_mac_t src_mac,
                          const uint8_t *pktbuf,
                          size_t pktsize);
 
@@ -96,10 +96,12 @@ static uint16_t reg_lifetime(n2n_sn_t *sss)
 }
 
 
-/** Update the edge table with the details of the edge which contacted the
- *  supernode. */
+/**
+ * Update the edge table with the details of the edge which contacted the
+ * supernode.
+ */
 static int update_edge(n2n_sn_t *sss,
-                       const n2n_mac_t edgeMac,
+                       const n2n_mac_t edge_mac,
                        const n2n_community_t community,
                        const n2n_sock_t *sender_sock,
                        time_t now)
@@ -109,48 +111,48 @@ static int update_edge(n2n_sn_t *sss,
     struct peer_info   *scan;
 
     traceDebug("update_edge for %s [%s]",
-               macaddr_str(mac_buf, edgeMac),
+               macaddr_str(mac_buf, edge_mac),
                sock_to_cstr(sockbuf, sender_sock));
 
-    scan = find_peer_by_mac(&sss->edges, edgeMac);
+    scan = find_peer_by_mac(&sss->edges, edge_mac);
 
     if (NULL == scan)
     {
         /* Not known */
 
-        scan = (struct peer_info *) calloc(1, sizeof(struct peer_info)); /* deallocated in purge_expired_registrations */
+        /* Entry will be deallocated in purge_expired_registrations */
+        scan = (struct peer_info *) calloc(1, sizeof(struct peer_info));
 
         memcpy(scan->community_name, community, sizeof(n2n_community_t));
-        memcpy(&(scan->mac_addr), edgeMac, sizeof(n2n_mac_t));
+        memcpy(&(scan->mac_addr), edge_mac, sizeof(n2n_mac_t));
         memcpy(&(scan->sock), sender_sock, sizeof(n2n_sock_t));
 
         /* insert this guy at the head of the edges list */
         list_add(&sss->edges, &scan->list);
 
         traceInfo("update_edge created   %s ==> %s",
-                   macaddr_str(mac_buf, edgeMac),
+                   macaddr_str(mac_buf, edge_mac),
                    sock_to_cstr(sockbuf, sender_sock));
     }
     else
     {
         /* Known */
-        if ((0 != memcmp(community, scan->community_name, sizeof(n2n_community_t))) ||
-            (0 != sock_equal(sender_sock, &(scan->sock))))
+        if ( !community_equal(community, scan->community_name) ||
+             (0 != sock_equal(sender_sock, &(scan->sock))) )
         {
             memcpy(scan->community_name, community, sizeof(n2n_community_t));
             memcpy(&(scan->sock), sender_sock, sizeof(n2n_sock_t));
 
             traceInfo("update_edge updated   %s ==> %s",
-                       macaddr_str(mac_buf, edgeMac),
+                       macaddr_str(mac_buf, edge_mac),
                        sock_to_cstr(sockbuf, sender_sock));
         }
         else
         {
             traceDebug("update_edge unchanged %s ==> %s",
-                       macaddr_str(mac_buf, edgeMac),
+                       macaddr_str(mac_buf, edge_mac),
                        sock_to_cstr(sockbuf, sender_sock));
         }
-
     }
 
     scan->last_seen = now;
@@ -158,21 +160,19 @@ static int update_edge(n2n_sn_t *sss,
 }
 
 
-
-/** Try to forward a message to a unicast MAC. If the MAC is unknown then
- *  broadcast to all edges in the destination community.
+/**
+ * Try to forward a message to a unicast MAC. If the MAC is unknown then
+ * broadcast to all edges in the destination community.
  */
 static int try_forward(n2n_sn_t *sss,
-                       const n2n_common_t *cmn,
-                       const n2n_mac_t dstMac,
-                       const uint8_t *pktbuf,
-                       size_t pktsize)
+                       const n2n_common_t *cmn, const n2n_mac_t dst_mac,
+                       const uint8_t *pktbuf, size_t pktsize)
 {
     struct peer_info   *scan;
     macstr_t            mac_buf;
     n2n_sock_str_t      sockbuf;
 
-    scan = find_peer_by_mac(&sss->edges, dstMac);
+    scan = find_peer_by_mac(&sss->edges, dst_mac);
 
     if (NULL != scan)
     {
@@ -208,16 +208,15 @@ static int try_forward(n2n_sn_t *sss,
 }
 
 
-/** Try and broadcast a message to all edges in the community.
+/**
+ * Try and broadcast a message to all edges in the community.
  *
- *  This will send the exact same datagram to zero or more edges registered to
- *  the supernode.
+ * This will send the exact same datagram to zero or more edges registered to
+ * the supernode.
  */
 static int try_broadcast(n2n_sn_t *sss,
-                         const n2n_common_t *cmn,
-                         const n2n_mac_t srcMac,
-                         const uint8_t *pktbuf,
-                         size_t pktsize)
+                         const n2n_common_t *cmn, const n2n_mac_t src_mac,
+                         const uint8_t *pktbuf, size_t pktsize)
 {
     struct peer_info   *scan;
     macstr_t            mac_buf;
@@ -227,8 +226,8 @@ static int try_broadcast(n2n_sn_t *sss,
 
     N2N_LIST_FOR_EACH(&sss->edges, scan)
     {
-        if ((0 == memcmp(scan->community_name, cmn->community, sizeof(n2n_community_t))) &&
-            (0 != memcmp(srcMac, scan->mac_addr, sizeof(n2n_mac_t))))
+        if ( community_equal(scan->community_name, cmn->community) &&
+             !mac_equal(src_mac, scan->mac_addr) )
         /* REVISIT: exclude if the destination socket is where the packet came from. */
         {
             int data_sent_len;
@@ -238,10 +237,10 @@ static int try_broadcast(n2n_sn_t *sss,
             {
                 ++(sss->stats.errors);
                 traceWarning("multicast %lu to [%s] %s failed %s",
-                           pktsize,
-                           sock_to_cstr(sockbuf, &(scan->sock)),
-                           macaddr_str(mac_buf, scan->mac_addr),
-                           strerror(errno));
+                             pktsize,
+                             sock_to_cstr(sockbuf, &(scan->sock)),
+                             macaddr_str(mac_buf, scan->mac_addr),
+                             strerror(errno));
             }
             else
             {
@@ -903,7 +902,6 @@ static int process_udp(n2n_sn_t *sss,
         traceDebug("Tx REGISTER_SUPER_ACK for %s [%s]",
                    macaddr_str(mac_buf, reg.edgeMac),
                    sock_to_cstr(sockbuf, &(ack.sock)));
-
     }
 
 
@@ -1144,7 +1142,7 @@ static void help(int argc, char * const argv[])
 }
 
 
-static void read_args(int argc, char *argv[], n2n_sn_t *sss)
+static void read_args(int argc, char * const argv[], n2n_sn_t *sss)
 {
     int opt;
 
