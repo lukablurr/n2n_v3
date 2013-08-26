@@ -23,16 +23,15 @@
  *
  */
 
-#include "edge.h"
-#include "edge_mgmt.h"
 #include "n2n.h"
 #include "n2n_transforms.h"
 #include "n2n_log.h"
 #include "n2n_utils.h"
+#include "edge.h"
+#include "edge_mgmt.h"
 #include "tuntap.h"
-#include <assert.h>
-//TODO #include <sys/stat.h>
 #include "minilzo.h"
+#include <assert.h>
 
 #ifdef N2N_MULTIPLE_SUPERNODES
 #include "sn_multiple.h"
@@ -1233,6 +1232,7 @@ static int handle_PACKET(n2n_edge_t *eee,
 {
     ssize_t     data_sent_len;
     uint8_t     from_supernode;
+    size_t      rx_transop_idx;
     //TODO uint8_t    *eth_payload = NULL;
     time_t      now;
     int         retval = -1;
@@ -1259,7 +1259,6 @@ static int handle_PACKET(n2n_edge_t *eee,
     /* Update the sender in peer table entry */
     check_peer(eee, from_supernode, pkt->srcMac, orig_sender);
 
-    size_t rx_transop_idx = 0;
     rx_transop_idx = transop_enum_to_index(pkt->transform);
 
     if (rx_transop_idx < 0)
@@ -1272,7 +1271,7 @@ static int handle_PACKET(n2n_edge_t *eee,
     /* Handle transform. */
     {
         uint8_t eth_payload[N2N_PKT_BUF_SIZE];
-        size_t eth_size;
+        size_t  eth_size;
 
         n2n_trans_op_t *rx_transop = &eee->transop[rx_transop_idx];
 
@@ -1605,6 +1604,7 @@ static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running)
     struct sockaddr_in  sender_sock;
     socklen_t           i;
     size_t              msg_len;
+    edge_cmd_t          cmd_type;
 
     i = sizeof(sender_sock);
     recvlen = recvfrom(eee->udp_mgmt_sock, udp_buf, N2N_PKT_BUF_SIZE, 0 /* flags */,
@@ -1616,7 +1616,7 @@ static void readFromMgmtSocket(n2n_edge_t *eee, int *keep_running)
         return; /* failed to receive data from UDP */
     }
 
-    edge_cmd_t cmd_type = process_edge_mgmt(eee, udp_buf, recvlen, udp_buf, &msg_len);
+    cmd_type = process_edge_mgmt(eee, udp_buf, recvlen, udp_buf, &msg_len);
 
     switch (cmd_type)
     {
@@ -2106,7 +2106,7 @@ static void read_args(int argc, char *argv[], n2n_edge_t *eee, boot_helper_t *bo
     const char *optstring = "K:k:a:bc:Eu:g:m:M:s:d:l:p:fvhrt:";
 #endif
 
-    effective_args_t effective_args = { .argc = 0, .argv = NULL };
+    effective_args_t effective_args = { 0, NULL };
     build_effective_args(argc, argv, &effective_args);
 
 

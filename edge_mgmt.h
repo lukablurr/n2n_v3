@@ -8,8 +8,8 @@
 #ifndef EDGE_MGMT_H_
 #define EDGE_MGMT_H_
 
+#include "n2n.h"
 #include "edge.h"
-#include <stdint.h>
 
 
 
