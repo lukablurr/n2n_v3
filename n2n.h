@@ -24,17 +24,6 @@
 #ifndef _N2N_H_
 #define _N2N_H_
 
-/*
-   tunctl -t tun0
-   tunctl -t tun1
-   ifconfig tun0 1.2.3.4 up
-   ifconfig tun1 1.2.3.5 up
-   ./edge -d tun0 -l 2000 -r 127.0.0.1:3000 -c hello
-   ./edge -d tun1 -l 3000 -r 127.0.0.1:2000 -c hello
-
-
-   tunctl -u UID -t tunX
-*/
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define _DARWIN_
@@ -48,69 +37,35 @@
 
 /* Moved here to define _CRT_SECURE_NO_WARNINGS before all the including takes place */
 #ifdef WIN32
-#include "win32/n2n_win32.h"
-#undef N2N_HAVE_DAEMON
-#undef N2N_HAVE_SETUID
+# include "win32/n2n_win32.h"
+# undef N2N_HAVE_DAEMON
+# undef N2N_HAVE_SETUID
 #endif
 
-#include <time.h>
-#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 #include <fcntl.h>
 
-#ifndef WIN32
-#include <netdb.h>
-#endif
-
 #ifndef _MSC_VER
-#include <getopt.h>
+# include <getopt.h>
 #endif /* #ifndef _MSC_VER */
 
-
 #ifndef WIN32
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/param.h>
-#include <pthread.h>
-
-#ifdef __linux__
-#include <linux/if.h>
-#include <linux/if_tun.h>
-#define N2N_CAN_NAME_IFACE 1
-#endif /* #ifdef __linux__ */
-
-#ifdef __FreeBSD__
-#include <netinet/in_systm.h>
-#endif /* #ifdef __FreeBSD__ */
-
-//TODO #include <syslog.h>
-#include <sys/wait.h>
-
-
-#ifdef __sun__
-#include <sys/sysmacros.h> /* MIN() and MAX() declared here */
-#undef N2N_HAVE_DAEMON
-#endif /* #ifdef __sun__ */
-
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/udp.h>
-#include <signal.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <unistd.h>
-
+# include <unistd.h>
+# include <sys/ioctl.h>
+# include <sys/param.h>
+# include <sys/wait.h>
+# ifdef __sun__
+#  include <sys/sysmacros.h> /* MIN() and MAX() declared here */
+#  undef N2N_HAVE_DAEMON
+# endif /* #ifdef __sun__ */
+# include <signal.h>
+# include <sys/types.h>
 #endif /* #ifndef WIN32 */
-
-
-
-#ifdef WIN32
-#include "win32/wintap.h"
-#endif /* #ifdef WIN32 */
 
 #include "n2n_list.h"
 #include "n2n_wire.h"

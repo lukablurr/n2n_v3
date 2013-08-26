@@ -23,9 +23,7 @@
 
 #include "n2n.h"
 #include "n2n_log.h"
-
 #include "minilzo.h"
-
 #include <assert.h>
 
 
