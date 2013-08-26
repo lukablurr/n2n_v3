@@ -31,7 +31,6 @@
 #define N2N_PKT_VERSION                 2
 #define N2N_DEFAULT_TTL                 2       /* can be forwarded twice at most */
 #define N2N_COMMUNITY_SIZE              16
-#define N2N_MAC_SIZE                    ETH_ADDR_LEN
 #define N2N_COOKIE_SIZE                 4
 #define N2N_PKT_BUF_SIZE                2048
 #define N2N_SOCKBUF_SIZE                64      /* string representation of INET or INET6 sockets */
@@ -313,7 +312,7 @@ int decode_PACKET(n2n_PACKET_t *pkt,
 void init_cmn(n2n_common_t    *cmn,
               n2n_pc_t         pc,
               n2n_flags_t      flags,
-              n2n_community_t  community);
+              const n2n_community_t community);
 
 
 #endif /* #if !defined( N2N_WIRE_H_ ) */

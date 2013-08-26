@@ -458,7 +458,7 @@ int decode_PACKET(n2n_PACKET_t *pkt,
 }
 
 
-void init_cmn(n2n_common_t *cmn, n2n_pc_t pc, n2n_flags_t flags, n2n_community_t community)
+void init_cmn(n2n_common_t *cmn, n2n_pc_t pc, n2n_flags_t flags, const n2n_community_t community)
 {
     memset(cmn, 0, sizeof(cmn));
     cmn->ttl   = N2N_DEFAULT_TTL;

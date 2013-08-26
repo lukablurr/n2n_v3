@@ -60,19 +60,6 @@ typedef unsigned long in_addr_t;
 
 #define socklen_t int
 
-#define ETH_ADDR_LEN 6
-/*                                                                                                                                                                                     
- * Structure of a 10Mb/s Ethernet header.                                                                                                                                              
- */
-struct ether_hdr
-{
-    uint8_t  dhost[ETH_ADDR_LEN];
-    uint8_t  shost[ETH_ADDR_LEN];
-    uint16_t type;                /* higher layer protocol encapsulated */
-};
-
-typedef struct ether_hdr ether_hdr_t;
-
 /* ************************************* */
 
 struct ip {

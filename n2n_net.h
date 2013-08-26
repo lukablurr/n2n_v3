@@ -39,39 +39,6 @@
 #include <netinet/in_systm.h>
 #endif /* #ifdef __FreeBSD__ */
 
-
-
-
-/******************************************************************************
- *
- * LAYER 2
- *
- */
-
-#define ETH_ADDR_LEN            6
-
-#define N2N_MACSTR_SIZE         32
-
-
-
-struct ether_hdr
-{
-    uint8_t  dhost[ETH_ADDR_LEN];
-    uint8_t  shost[ETH_ADDR_LEN];
-    uint16_t type;                /* higher layer protocol encapsulated */
-} __attribute__ ((__packed__));//TODO not packed on windows
-
-typedef struct ether_hdr ether_hdr_t;
-
-
-//#define N2N_MAC_SIZE                    6
-typedef uint8_t n2n_mac_t[ETH_ADDR_LEN];
-
-
-/** Common type used to hold stringified MAC addresses. */
-typedef char macstr_t[N2N_MACSTR_SIZE];
-
-
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
@@ -83,20 +50,53 @@ typedef char macstr_t[N2N_MACSTR_SIZE];
 #endif /* #ifndef WIN32 */
 
 
+
+
+/******************************************************************************
+ *
+ * LAYER 2
+ *
+ */
+
+#define ETH_ADDR_LEN            6
+
+#define N2N_MAC_SIZE            ETH_ADDR_LEN
+#define N2N_MACSTR_SIZE         32
+
+
+typedef uint8_t     n2n_mac_t[ETH_ADDR_LEN];
+
+/** Common type used to hold stringified MAC addresses. */
+typedef char        macstr_t[N2N_MACSTR_SIZE];
+
+/*
+ * Structure of a 10Mb/s Ethernet header.
+ */
+struct ether_hdr
+{
+    n2n_mac_t  dhost;
+    n2n_mac_t  shost;
+    uint16_t   type;                /* higher layer protocol encapsulated */
+} PACKED;
+
+typedef struct ether_hdr ether_hdr_t;
+
+
+/* functions */
 int is_empty_mac(const uint8_t *mac);
 int is_broadcast_mac(const uint8_t *mac);
 int is_multicast_mac(const uint8_t *mac);
 int is_ipv6_multicast_mac(const uint8_t *mac);
 
-extern uint8_t is_multi_broadcast_mac(const uint8_t *dest_mac);
+uint8_t is_multi_broadcast_mac(const uint8_t *dest_mac);
 
 static inline int mac_equal(const n2n_mac_t a, const n2n_mac_t b)
 {
     return (0 == memcmp(a, b, ETH_ADDR_LEN));
 }
 
-extern char *mac2str(macstr_t buf, const n2n_mac_t mac);
-extern int   str2mac(uint8_t *outmac /* 6 bytes */, const char *s);
+char *mac2str(macstr_t buf, const n2n_mac_t mac);
+int   str2mac(uint8_t *outmac /* 6 bytes */, const char *s);
 
 
 /******************************************************************************
