@@ -29,9 +29,12 @@
 /* ************************************** */
 
 extern int traceLevel;
-extern int useSyslog;
 
-extern void traceEvent(int eventTraceLevel, char *file, int line, char *format, ...);
+#ifndef WIN32
+extern int useSyslog;
+#endif
+
+void traceEvent(int eventTraceLevel, char *file, int line, char *format, ...);
 
 /* ************************************** */
 

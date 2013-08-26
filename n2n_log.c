@@ -10,15 +10,21 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include <syslog.h>
 #include <time.h>
+#ifndef WIN32
+# include <syslog.h>
+#endif
 
 
 #define N2N_TRACE_DATESIZE 32
 
 
 int traceLevel = N2N_LOG_DEBUG;//TODO N2N_LOG_NORMAL;
-int useSyslog = 0, syslog_opened = 0;
+
+#ifndef WIN32
+int useSyslog = 0;
+int syslog_opened = 0;
+#endif
 
 
 
