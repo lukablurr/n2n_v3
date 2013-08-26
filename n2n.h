@@ -172,7 +172,7 @@ extern char *msg_type2str(uint16_t msg_type);
 
 /******************************************************************************
  *
- * PEER INFORMATION
+ * P2P INFORMATION
  *
  */
 
@@ -197,6 +197,13 @@ size_t purge_expired_registrations(n2n_list_head_t *peers);
 peer_info_t *find_peer_by_mac(n2n_list_head_t *peers, const n2n_mac_t mac);
 peer_info_t *find_peer_by_mac_for_removal(n2n_list_head_t *peers, const n2n_mac_t mac,
                                           peer_info_t **prev);
+
+
+
+static inline int community_equal(const n2n_community_t a, const n2n_community_t b)
+{
+    return (0 == memcmp(a, b, sizeof(n2n_community_t)));
+}
 
 
 /******************************************************************************
