@@ -5,26 +5,22 @@
  *      Author: wolf
  */
 
+#include "n2n.h"
 #include "n2n_log.h"
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
-#include <time.h>
 #ifndef WIN32
 # include <syslog.h>
-#endif
+
+int useSyslog = 0;
+int syslog_opened = 0;
+
+#endif /* #ifndef WIN32 */
 
 
 #define N2N_TRACE_DATESIZE 32
 
 
 int traceLevel = N2N_LOG_DEBUG;//TODO N2N_LOG_NORMAL;
-
-#ifndef WIN32
-int useSyslog = 0;
-int syslog_opened = 0;
-#endif
 
 
 
