@@ -8,7 +8,6 @@
 #ifndef N2N_LIST_H_
 #define N2N_LIST_H_
 
-
 #include <stddef.h>
 
 #ifdef _MSC_VER

@@ -5,11 +5,9 @@
  *      Author: Costin Lupu
  */
 
+#include "n2n.h"
 #include "n2n_list.h"
 #include "n2n_log.h"
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 
 
