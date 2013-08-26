@@ -64,4 +64,15 @@ extern void hexdump(const uint8_t *buf, size_t len);
 #endif
 
 
+
+//TODO
+#ifdef _MSC_VER
+#define PACKED
+#else
+#define PACKED      __attribute__ ((__packed__))
+#endif
+
+
+
+
 #endif /* N2N_UTILS_H_ */
