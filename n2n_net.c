@@ -72,7 +72,7 @@ uint8_t is_multi_broadcast_mac(const uint8_t *mac)
 /* http://www.faqs.org/rfcs/rfc908.html */
 
 
-char *macaddr_str(macstr_t buf, const n2n_mac_t mac)
+char *mac2str(macstr_t buf, const n2n_mac_t mac)
 {
     snprintf(buf, N2N_MACSTR_SIZE, "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0] & 0xFF, mac[1] & 0xFF, mac[2] & 0xFF,
@@ -284,7 +284,7 @@ ssize_t sendto_sock(int sock_fd,
 
     fill_sockaddr(&dst_addr, dest);
 
-    traceDebug("sendto_sock %lu to [%s]", pktsize, sock_to_cstr(sockbuf, dest));//TODO to be removed
+    traceDebug("sendto_sock %lu to [%s]", pktsize, sock2str(sockbuf, dest));//TODO to be removed
 
     sent = sendto(sock_fd,
                   pktbuf, pktsize,
@@ -324,8 +324,7 @@ int sock_equal(const n2n_sock_t *a, const n2n_sock_t *b)
 }
 
 
-extern char *sock_to_cstr(n2n_sock_str_t out,
-                          const n2n_sock_t *sock)
+extern char *sock2str(n2n_sock_str_t out, const n2n_sock_t *sock)
 {
     int r;
     ipstr_t ipstr;
@@ -380,7 +379,7 @@ extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str)
 }
 
 
-extern int my_sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str_orig)
+extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str_orig)
 {
     int retval;
 

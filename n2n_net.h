@@ -95,7 +95,7 @@ static inline int mac_equal(const n2n_mac_t a, const n2n_mac_t b)
     return (0 == memcmp(a, b, ETH_ADDR_LEN));
 }
 
-extern char *macaddr_str(macstr_t buf, const n2n_mac_t mac);
+extern char *mac2str(macstr_t buf, const n2n_mac_t mac);
 extern int   str2mac(uint8_t *outmac /* 6 bytes */, const char *s);
 
 
@@ -161,10 +161,10 @@ extern int is_empty_ip_address(const n2n_sock_t *sock);
 
 extern int sock_equal(const n2n_sock_t *a, const n2n_sock_t *b);
 
-extern char*       sock_to_cstr(n2n_sock_str_t out, const n2n_sock_t *sock);
+extern char*       sock2str(n2n_sock_str_t out, const n2n_sock_t *sock);
 extern n2n_sock_t* sock_from_cstr(n2n_sock_t *out,  const n2n_sock_str_t str);
 
-extern int my_sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str);
+extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str);
 
 
 /******************************************************************************

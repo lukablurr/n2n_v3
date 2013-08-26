@@ -295,7 +295,7 @@ void log_SNM_INFO( const n2n_SNM_INFO_t *info )
     {
         for(i = 0; i < info->sn_num; i++)
         {
-            traceEvent( TRACE_DEBUG, "\t[S%d] %s", i, sock_to_cstr(sockbuf, &info->sn_ptr[i]) );
+            traceEvent( TRACE_DEBUG, "\t[S%d] %s", i, sock2str(sockbuf, &info->sn_ptr[i]) );
         }
     }
 
@@ -314,7 +314,7 @@ void log_SNM_ADV( const n2n_SNM_ADV_t *adv )
     n2n_sock_str_t sockbuf;
 
     traceEvent( TRACE_DEBUG, "ADV Supernode=%s Communities=%d",
-                sock_to_cstr(sockbuf, &adv->sn), adv->comm_num );
+                sock2str(sockbuf, &adv->sn), adv->comm_num );
 
     if (adv->comm_ptr)
     {

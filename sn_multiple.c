@@ -51,7 +51,7 @@ void write_sn(FILE *f, const void *entry)
     n2n_sock_str_t sock_str;
     const struct sn_info *sni = (const struct sn_info *) entry;
 
-    if (fprintf(f, "%s\n", sock_to_cstr(sock_str, &sni->sn)) < 0)
+    if (fprintf(f, "%s\n", sock2str(sock_str, &sni->sn)) < 0)
     {
         traceError("couldn't write supernode entry to file");
     }
@@ -99,7 +99,7 @@ int update_supernodes(sn_list_t *supernodes, const n2n_sock_t *sn)
     if (add_new_supernode(&supernodes->head, sn) == NULL)
         return -1;
 
-    traceDebug("Added supernode %s", sock_to_cstr(sock_str, sn));
+    traceDebug("Added supernode %s", sock2str(sock_str, sn));
     return 1;
 }
 
@@ -170,7 +170,7 @@ void write_community(FILE *f, const void *entry)
 
     for (i = 0; i < ci->sn_num; i++)
     {
-        sock_to_cstr(sock_str, ci->sn_sock + i);
+        sock2str(sock_str, ci->sn_sock + i);
         fprintf(f, "\t%s\n", sock_str);
     }
 }

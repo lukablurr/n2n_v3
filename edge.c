@@ -370,7 +370,7 @@ static void send_register_super(n2n_edge_t *eee, const n2n_sock_t *supernode)
     idx = 0;
     encode_REGISTER_SUPER(pktbuf, &idx, &cmn, &reg);
 
-    traceInfo("send REGISTER_SUPER to %s", sock_to_cstr(sockbuf, supernode));
+    traceInfo("send REGISTER_SUPER to %s", sock2str(sockbuf, supernode));
 
     sent = sendto_sock(eee->udp_sock, pktbuf, idx, supernode);
 
@@ -448,7 +448,7 @@ static void update_supernode_reg(n2n_edge_t *eee, time_t nowTime)
     {
         n2n_sock_str_t sockstr;
         traceDebug("Registering with supernode (%s) (attempts left %u)",
-                   sock_to_cstr(sockstr, supernode_ip(eee)),
+                   sock2str(sockstr, supernode_ip(eee)),
                    (unsigned int) eee->sup_attempts);
     }
 
@@ -490,7 +490,7 @@ static void send_register(n2n_edge_t *eee, const n2n_sock_t *remote_peer)
     idx = 0;
     encode_REGISTER(pktbuf, &idx, &cmn, &reg);
 
-    traceInfo("send REGISTER %s", sock_to_cstr(sockbuf, remote_peer));
+    traceInfo("send REGISTER %s", sock2str(sockbuf, remote_peer));
     sent = sendto_sock(eee->udp_sock, pktbuf, idx, remote_peer);
 }
 
@@ -519,7 +519,7 @@ static void send_register_ack(n2n_edge_t            *eee,
     idx = 0;
     encode_REGISTER_ACK(pktbuf, &idx, &cmn, &ack);
 
-    traceInfo("send REGISTER_ACK %s", sock_to_cstr(sockbuf, remote_peer));
+    traceInfo("send REGISTER_ACK %s", sock2str(sockbuf, remote_peer));
 
     sent = sendto_sock(eee->udp_sock, pktbuf, idx, remote_peer);
 }
@@ -571,8 +571,8 @@ static void try_send_register(n2n_edge_t *eee, uint8_t from_supernode,
     peer_list_add(&eee->pending_peers, scan);
 
     traceDebug("=== new pending %s -> %s",
-               macaddr_str(mac_buf, scan->mac_addr),
-               sock_to_cstr(sockbuf, &(scan->sock)));
+               mac2str(mac_buf, scan->mac_addr),
+               sock2str(sockbuf, &(scan->sock)));
 
     traceInfo("Pending peers list size=%u",
                (unsigned int) list_size(&eee->pending_peers));
@@ -601,7 +601,7 @@ static void set_peer_operational(n2n_edge_t *eee,
     n2n_sock_str_t sockbuf;
 
     traceInfo("set_peer_operational: %s -> %s",
-              macaddr_str(mac_buf, mac), sock_to_cstr(sockbuf, peer));
+              mac2str(mac_buf, mac), sock2str(sockbuf, peer));
 
     scan = find_peer_by_mac_for_removal(&eee->pending_peers, mac, &prev);
 
@@ -624,7 +624,7 @@ static void set_peer_operational(n2n_edge_t *eee,
     list_add(&eee->known_peers, &scan->list);
 
     traceDebug("=== new peer %s -> %s",
-               macaddr_str(mac_buf, scan->mac_addr), sock_to_cstr(sockbuf, peer));
+               mac2str(mac_buf, scan->mac_addr), sock2str(sockbuf, peer));
     traceInfo("Pending peers list size=%u",
               (unsigned int) list_size(&eee->pending_peers));
     traceInfo("Operational peers list size=%u",
@@ -669,9 +669,9 @@ static void update_peer_address(n2n_edge_t *eee, uint8_t from_supernode,
         if (0 == from_supernode)
         {
             traceNormal("Peer changed %s: %s -> %s",
-                        macaddr_str(mac_buf, scan->mac_addr),
-                        sock_to_cstr(sockbuf1, &scan->sock),
-                        sock_to_cstr(sockbuf2, peer));
+                        mac2str(mac_buf, scan->mac_addr),
+                        sock2str(sockbuf1, &scan->sock),
+                        sock2str(sockbuf2, peer));
 
             /* The peer has changed public socket. It can no longer
              * be assumed to be reachable. Remove the peer. */
@@ -758,7 +758,7 @@ static int find_peer_destination(n2n_edge_t *eee,
     }
 
     traceDebug("find_peer_destination (%s) -> [%s]",
-               macaddr_str(mac_buf, mac), sock_to_cstr(sockbuf, destination));
+               mac2str(mac_buf, mac), sock2str(sockbuf, destination));
 
     return retval;
 }
@@ -804,7 +804,7 @@ static int load_supernodes(n2n_edge_t *eee)
 
         N2N_LIST_FOR_EACH_ENTRY(sni, &eee->supernodes.head)
         {
-            sock_to_cstr(eee->sn_ip_array[eee->sn_num++], &sni->sn);
+            sock2str(eee->sn_ip_array[eee->sn_num++], &sni->sn);
         }
 
         /* set registering supernode */
@@ -832,7 +832,7 @@ static int add_supernode(n2n_edge_t *eee, n2n_sock_t *sn)
     if (new_one)
     {
         n2n_sock_str_t sock_str;
-        sock_to_cstr(sock_str, sn);
+        sock2str(sock_str, sn);
 
         strncpy((eee->sn_ip_array[eee->sn_num]), sock_str, N2N_EDGE_SN_HOST_SIZE);
 
@@ -949,7 +949,7 @@ static void edge_send_snm_req(n2n_edge_t *eee, n2n_sock_t *sn)
 
     log_SNM_hdr(&hdr);
     log_SNM_REQ(&req);
-    traceInfo("### Tx N2N SNM_REQ to %s", sock_to_cstr(sockbuf, sn));
+    traceInfo("### Tx N2N SNM_REQ to %s", sock2str(sockbuf, sn));
 
     sendto_sock(eee->snm_sock, pktbuf, idx, sn);
 }
@@ -983,7 +983,7 @@ static void readFromSNMSocket(n2n_edge_t *eee)
     memcpy(&(sender.addr.v4), &(sender_sock.sin_addr.s_addr), IPV4_SIZE);
 
     traceInfo("### Rx N2N SNM (%u) from %s",
-               recvlen, sock_to_cstr(sockbuf, &sender));
+               recvlen, sock2str(sockbuf, &sender));
 
     rem = recvlen;
     idx = 0;
@@ -1126,7 +1126,7 @@ static ssize_t send_PACKET(n2n_edge_t *eee, n2n_mac_t dst_mac,
         ++(eee->tx_sup);
     }
 
-    traceInfo("send_PACKET to %s", sock_to_cstr(sockbuf, &destination));
+    traceInfo("send_PACKET to %s", sock2str(sockbuf, &destination));
     s = sendto_sock(eee->udp_sock, pktbuf, pktlen, &destination);
 
     return s;
@@ -1318,7 +1318,7 @@ static void readFromTAPSocket(n2n_edge_t *eee)
     }
 
     traceInfo("### Rx TAP packet (%4d) for %s",
-              (signed int) eth_len, macaddr_str(mac_buf, dst_mac));
+              (signed int) eth_len, mac2str(mac_buf, dst_mac));
 
     if (eee->drop_multicast &&
         (is_ipv6_multicast_mac(dst_mac) ||
@@ -1439,7 +1439,7 @@ static void readFromIPSocket(n2n_edge_t *eee)
     orig_sender = &sender;
 
     traceInfo("### Rx N2N UDP (%d) from %s",
-              (signed int) recvlen, sock_to_cstr(sockbuf1, &sender));
+              (signed int) recvlen, sock2str(sockbuf1, &sender));
 
     /* hexdump( udp_buf, recvlen ); */
 
@@ -1474,8 +1474,8 @@ static void readFromIPSocket(n2n_edge_t *eee)
             orig_sender = &pkt.sock;
         }
 
-        traceInfo("Rx PACKET from %s (%s)", sock_to_cstr(sockbuf1, &sender),
-                  sock_to_cstr(sockbuf2, orig_sender));
+        traceInfo("Rx PACKET from %s (%s)", sock2str(sockbuf1, &sender),
+                  sock2str(sockbuf2, orig_sender));
 
         handle_PACKET(eee, &cmn, &pkt, orig_sender, udp_buf + idx, recvlen - idx);
     }
@@ -1491,8 +1491,8 @@ static void readFromIPSocket(n2n_edge_t *eee)
         }
 
         traceInfo("Rx REGISTER src=%s dst=%s from peer %s (%s)",
-                  macaddr_str(mac_buf1, reg.srcMac), macaddr_str(mac_buf2, reg.dstMac),
-                  sock_to_cstr(sockbuf1, &sender), sock_to_cstr(sockbuf2, orig_sender));
+                  mac2str(mac_buf1, reg.srcMac), mac2str(mac_buf2, reg.dstMac),
+                  sock2str(sockbuf1, &sender), sock2str(sockbuf2, orig_sender));
 
         if (mac_equal(reg.dstMac, eee->device.mac_addr))
         {
@@ -1513,8 +1513,8 @@ static void readFromIPSocket(n2n_edge_t *eee)
         }
 
         traceInfo("Rx REGISTER_ACK src=%s dst=%s from peer %s (%s)",
-                  macaddr_str(mac_buf1, ra.srcMac), macaddr_str(mac_buf2, ra.dstMac),
-                  sock_to_cstr(sockbuf1, &sender), sock_to_cstr(sockbuf2, orig_sender));
+                  mac2str(mac_buf1, ra.srcMac), mac2str(mac_buf2, ra.dstMac),
+                  sock2str(sockbuf1, &sender), sock2str(sockbuf2, orig_sender));
 
         /* Move from pending_peers to known_peers; ignore if not in pending. */
         set_peer_operational(eee, ra.srcMac, &sender);
@@ -1537,8 +1537,8 @@ static void readFromIPSocket(n2n_edge_t *eee)
         }
 
         traceNormal("Rx REGISTER_SUPER_ACK myMAC=%s [%s] (external %s). Attempts %u",
-                    macaddr_str(mac_buf1, ra.edgeMac), sock_to_cstr(sockbuf1, &sender),
-                    sock_to_cstr(sockbuf2, orig_sender), (unsigned int) eee->sup_attempts);
+                    mac2str(mac_buf1, ra.edgeMac), sock2str(sockbuf1, &sender),
+                    sock2str(sockbuf2, orig_sender), (unsigned int) eee->sup_attempts);
 
         if (0 != memcmp(ra.cookie, eee->last_cookie, N2N_COOKIE_SIZE))
         {
@@ -1556,11 +1556,11 @@ static void readFromIPSocket(n2n_edge_t *eee)
                     break;
 
                 traceNormal("Rx REGISTER_SUPER_ACK backup supernode at %s",
-                           sock_to_cstr(sockbuf1, &(ra.sn_bak[i])));
+                           sock2str(sockbuf1, &(ra.sn_bak[i])));
             }
 #else
             traceNormal("Rx REGISTER_SUPER_ACK backup supernode at %s",
-                        sock_to_cstr(sockbuf1, &(ra.sn_bak)));
+                        sock2str(sockbuf1, &(ra.sn_bak)));
 #endif
         }
 
@@ -1726,7 +1726,7 @@ static int edge_start(n2n_edge_t *edge, boot_helper_t *boot_helper)
     for (i = 0; i < N2N_EDGE_NUM_SUPERNODES; ++i)
     {
         n2n_sock_str_t sockstr;
-        traceNormal("supernode %u => %s\n", i, sock_to_cstr(sockstr, &edge->supernodes[i]));
+        traceNormal("supernode %u => %s\n", i, sock2str(sockstr, &edge->supernodes[i]));
     }
 
 #ifdef N2N_MULTIPLE_SUPERNODES
@@ -2133,7 +2133,7 @@ static void read_args(int argc, char *argv[], n2n_edge_t *eee, boot_helper_t *bo
                 exit(1);
             }
 
-            if (0 != my_sock_from_cstr(&eee->supernodes[eee->sn_num], optarg))
+            if (0 != str2sock(&eee->supernodes[eee->sn_num], optarg))
             {
                 fprintf(stderr, "Wrong supernode parameter: %s (Hint: -l <host:port>)", optarg);
                 exit(1);

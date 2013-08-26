@@ -44,7 +44,7 @@ static void read_mac(char *ifname, n2n_mac_t mac_addr)
 
     traceNormal("Interface %s has MAC %s",
                ifname,
-               macaddr_str(mac_addr_buf, mac_addr));
+               mac2str(mac_addr_buf, mac_addr));
     close(_sock);
 }
 
@@ -110,7 +110,7 @@ int tuntap_open(tuntap_dev *device, ip_mode_t ip_mode)
         /* Set the hw address before bringing the if up. */
         macstr_t macstr;
         snprintf(buf, sizeof(buf), "/sbin/ifconfig %s hw ether %s",
-                 ifr.ifr_name, macaddr_str(macstr, device->mac_addr));
+                 ifr.ifr_name, mac2str(macstr, device->mac_addr));
         system(buf);
         traceInfo("Setting MAC: %s", buf);
     }

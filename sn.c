@@ -111,8 +111,8 @@ static int update_edge(n2n_sn_t *sss,
     struct peer_info   *scan;
 
     traceDebug("update_edge for %s [%s]",
-               macaddr_str(mac_buf, edge_mac),
-               sock_to_cstr(sockbuf, sender_sock));
+               mac2str(mac_buf, edge_mac),
+               sock2str(sockbuf, sender_sock));
 
     scan = find_peer_by_mac(&sss->edges, edge_mac);
 
@@ -131,8 +131,8 @@ static int update_edge(n2n_sn_t *sss,
         list_add(&sss->edges, &scan->list);
 
         traceInfo("update_edge created   %s ==> %s",
-                   macaddr_str(mac_buf, edge_mac),
-                   sock_to_cstr(sockbuf, sender_sock));
+                   mac2str(mac_buf, edge_mac),
+                   sock2str(sockbuf, sender_sock));
     }
     else
     {
@@ -144,14 +144,14 @@ static int update_edge(n2n_sn_t *sss,
             memcpy(&(scan->sock), sender_sock, sizeof(n2n_sock_t));
 
             traceInfo("update_edge updated   %s ==> %s",
-                       macaddr_str(mac_buf, edge_mac),
-                       sock_to_cstr(sockbuf, sender_sock));
+                       mac2str(mac_buf, edge_mac),
+                       sock2str(sockbuf, sender_sock));
         }
         else
         {
             traceDebug("update_edge unchanged %s ==> %s",
-                       macaddr_str(mac_buf, edge_mac),
-                       sock_to_cstr(sockbuf, sender_sock));
+                       mac2str(mac_buf, edge_mac),
+                       sock2str(sockbuf, sender_sock));
         }
     }
 
@@ -184,16 +184,16 @@ static int try_forward(n2n_sn_t *sss,
             ++(sss->stats.fwd);
             traceDebug("unicast %lu to [%s] %s",
                        pktsize,
-                       sock_to_cstr(sockbuf, &(scan->sock)),
-                       macaddr_str(mac_buf, scan->mac_addr));
+                       sock2str(sockbuf, &(scan->sock)),
+                       mac2str(mac_buf, scan->mac_addr));
         }
         else
         {
             ++(sss->stats.errors);
             traceError("unicast %lu to [%s] %s FAILED (%d: %s)",
                        pktsize,
-                       sock_to_cstr(sockbuf, &(scan->sock)),
-                       macaddr_str(mac_buf, scan->mac_addr),
+                       sock2str(sockbuf, &(scan->sock)),
+                       mac2str(mac_buf, scan->mac_addr),
                        errno, strerror(errno));
         }
     }
@@ -238,8 +238,8 @@ static int try_broadcast(n2n_sn_t *sss,
                 ++(sss->stats.errors);
                 traceWarning("multicast %lu to [%s] %s failed %s",
                              pktsize,
-                             sock_to_cstr(sockbuf, &(scan->sock)),
-                             macaddr_str(mac_buf, scan->mac_addr),
+                             sock2str(sockbuf, &(scan->sock)),
+                             mac2str(mac_buf, scan->mac_addr),
                              strerror(errno));
             }
             else
@@ -247,8 +247,8 @@ static int try_broadcast(n2n_sn_t *sss,
                 ++(sss->stats.broadcast);
                 traceDebug("multicast %lu to [%s] %s",
                            pktsize,
-                           sock_to_cstr(sockbuf, &(scan->sock)),
-                           macaddr_str(mac_buf, scan->mac_addr));
+                           sock2str(sockbuf, &(scan->sock)),
+                           mac2str(mac_buf, scan->mac_addr));
             }
         }
     } /* loop */
@@ -470,7 +470,7 @@ static void send_snm_req(n2n_sn_t         *sss,
     idx = 0;
     encode_SNM_REQ(pktbuf, &idx, &hdr, &req);
 
-    traceInfo("send SNM_REQ to %s", sock_to_cstr(sockbuf, sn));
+    traceInfo("send SNM_REQ to %s", sock2str(sockbuf, sn));
 
     sendto_sock(sss->sn_sock, sn, pktbuf, idx);
 }
@@ -502,7 +502,7 @@ static void send_snm_rsp(n2n_sn_t *sss, const n2n_sock_t *sock, snm_hdr_t *hdr, 
     idx = 0;
     encode_SNM_INFO(pktbuf, &idx, &rsp_hdr, &rsp);
 
-    traceInfo("send SNM_RSP to %s", sock_to_cstr(sock_buf, sock));
+    traceInfo("send SNM_RSP to %s", sock2str(sock_buf, sock));
     log_SNM_INFO(&rsp);
 
     clear_snm_info(&rsp);
@@ -531,7 +531,7 @@ static void send_snm_adv(n2n_sn_t *sss, n2n_sock_t *sn, struct n2n_list *comm_li
     idx = 0;
     encode_SNM_ADV(pktbuf, &idx, &hdr, &adv);
 
-    traceInfo("send ADV to %s", sock_to_cstr(sockbuf, sn));
+    traceInfo("send ADV to %s", sock2str(sockbuf, sn));
     log_SNM_ADV(&adv);
 
     sendto_sock(sss->sn_sock, sn, pktbuf, idx);
@@ -741,8 +741,8 @@ static int process_udp(n2n_sn_t *sss,
 
         traceDebug("Rx PACKET (%s) %s -> %s %s",
                    (unicast ? "unicast" : "multicast"),
-                   macaddr_str(mac_buf, pkt.srcMac),
-                   macaddr_str(mac_buf2, pkt.dstMac),
+                   mac2str(mac_buf, pkt.srcMac),
+                   mac2str(mac_buf2, pkt.dstMac),
                    (from_supernode ? "from sn" : "local"));
 
         if (!from_supernode)
@@ -804,8 +804,8 @@ static int process_udp(n2n_sn_t *sss,
         if (unicast)
         {
             traceDebug("Rx REGISTER %s -> %s %s",
-                       macaddr_str(mac_buf, reg.srcMac),
-                       macaddr_str(mac_buf2, reg.dstMac),
+                       mac2str(mac_buf, reg.srcMac),
+                       mac2str(mac_buf2, reg.dstMac),
                        ((cmn.flags & N2N_FLAGS_FROM_SUPERNODE) ? "from sn" : "local"));
 
             if (0 != (cmn.flags & N2N_FLAGS_FROM_SUPERNODE))
@@ -877,8 +877,8 @@ static int process_udp(n2n_sn_t *sss,
         memset(&(ack.sn_bak), 0, sizeof(n2n_sock_t));
 
         traceDebug("Rx REGISTER_SUPER for %s [%s]",
-                   macaddr_str(mac_buf, reg.edgeMac),
-                   sock_to_cstr(sockbuf, &(ack.sock)));
+                   mac2str(mac_buf, reg.edgeMac),
+                   sock2str(sockbuf, &(ack.sock)));
 
         update_edge(sss, reg.edgeMac, cmn.community, &(ack.sock), now);
 
@@ -900,8 +900,8 @@ static int process_udp(n2n_sn_t *sss,
                (struct sockaddr *) sender_sock, sizeof(struct sockaddr_in));
 
         traceDebug("Tx REGISTER_SUPER_ACK for %s [%s]",
-                   macaddr_str(mac_buf, reg.edgeMac),
-                   sock_to_cstr(sockbuf, &(ack.sock)));
+                   mac2str(mac_buf, reg.edgeMac),
+                   sock2str(sockbuf, &(ack.sock)));
     }
 
 
