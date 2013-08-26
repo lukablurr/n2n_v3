@@ -20,6 +20,15 @@
 #ifndef N2N_UTILS_H_
 #define N2N_UTILS_H_
 
+#ifdef WIN32
+# include "win32/n2n_win32.h"
+#else
+# include <stdint.h>
+# include <sys/types.h>
+#endif
+
+
+
 /** maximum length of command line arguments */
 #define MAX_CMDLINE_BUFFER_LENGTH    4096
 
@@ -46,12 +55,8 @@ void destroy_effective_args(effective_args_t *effective_args);
 
 /* ************************************** */
 
-#include <stdint.h>
-#ifndef WIN32
-#include <sys/types.h>
-#endif//TODO
 
-extern void hexdump(const uint8_t *buf, size_t len);
+void hexdump(const uint8_t *buf, size_t len);
 
 /* ************************************** */
 
@@ -62,17 +67,6 @@ extern void hexdump(const uint8_t *buf, size_t len);
 #ifndef min
 #define min(a, b) ((a > b) ? b : a)
 #endif
-
-
-
-//TODO
-#ifdef _MSC_VER
-#define PACKED
-#else
-#define PACKED      __attribute__ ((__packed__))
-#endif
-
-
 
 
 #endif /* N2N_UTILS_H_ */
