@@ -382,47 +382,49 @@ extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str)
 extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str_orig)
 {
     int retval;
+    char *last_colon_pos = NULL;
 
     n2n_sock_str_t str;
     memcpy(str, str_orig, sizeof(n2n_sock_str_t));
 
 
-    char *last_colon_pos = strrchr(str, ':');
+    last_colon_pos = strrchr(str, ':');
 
     if (strchr(str, ':') == last_colon_pos)
     {
-        out->family = AF_INET;
-
         if (last_colon_pos) //TODO
         {
             *last_colon_pos = '\0';
             out->port = atoi(last_colon_pos + 1);
         }
 
+        out->family = AF_INET;
         retval = extract_ipv4(out, str);
     }
     else
     {
-        out->family = AF_INET6;
+        char *from_pos = strchr(str, '[');
 
-        char *l_brack_pos = strchr(str, '[');
-        if (l_brack_pos)
+        if (from_pos)
         {
-            char *r_brack_pos = strchr(str, ']');
-            if (!r_brack_pos)
+            char *to_pos = strchr(str, ']');
+            if (!to_pos)
                 return -1;//TODO
 
-            if (r_brack_pos < last_colon_pos) //TODO
+            if (to_pos < last_colon_pos) //TODO
             {
                 //*last_colon_pos = '\0';
                 out->port = atoi(last_colon_pos + 1);
             }
 
-            *r_brack_pos = 0;
-            retval = extract_ipv6(out, l_brack_pos + 1);
+            from_pos += 1;
+            *to_pos = 0;
         }
         else
-            retval = extract_ipv6(out, str);
+            from_pos = str;
+
+        out->family = AF_INET6;
+        retval = extract_ipv6(out, from_pos);
     }
 
     return retval;
