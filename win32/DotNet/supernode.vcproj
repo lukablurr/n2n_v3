@@ -176,6 +176,22 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\n2n_list.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_log.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_net.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_utils.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\sn.c"
 				>
 			</File>
@@ -206,11 +222,31 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\n2n_list.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_log.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_net.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\n2n_utils.h"
+				>
+			</File>
+			<File
 				RelativePath="..\n2n_win32.h"
 				>
 			</File>
 			<File
 				RelativePath="..\..\n2n_wire.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sn.h"
 				>
 			</File>
 		</Filter>
