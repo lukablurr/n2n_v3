@@ -25,30 +25,31 @@
 #include "wintap.h"
 
 #ifdef _MSC_VER
-#include "getopt.h"
+# define inline             __inline
+# define __attribute__
+
+# include "getopt.h"
 
 /* Other Win environments are expected to support stdint.h */
 
 /* stdint.h typedefs (C99) (not present in Visual Studio) */
-typedef unsigned int uint32_t;
-typedef unsigned short uint16_t;
-typedef unsigned char uint8_t;
+typedef unsigned int        uint32_t;
+typedef unsigned short      uint16_t;
+typedef unsigned char       uint8_t;
 
 /* sys/types.h typedefs (not present in Visual Studio) */
-typedef unsigned int u_int32_t;
-typedef unsigned short u_int16_t;
-typedef unsigned char u_int8_t;
+typedef unsigned int        u_int32_t;
+typedef unsigned short      u_int16_t;
+typedef unsigned char       u_int8_t;
 
-typedef int ssize_t;
+typedef int                 ssize_t;
 
-#define snprintf _snprintf
-#define strdup   _strdup
+# define snprintf           _snprintf
+# define strdup             _strdup
 
 #else
-
-#define _snprintf snprintf
-#define _strdup   strdup
-
+# define _snprintf snprintf
+# define _strdup   strdup
 #endif /* #ifdef _MSC_VER */
 
 typedef unsigned long in_addr_t;
