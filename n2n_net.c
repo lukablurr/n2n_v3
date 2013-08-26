@@ -72,7 +72,6 @@ uint8_t is_multi_broadcast_mac(const uint8_t *mac)
 /* http://www.faqs.org/rfcs/rfc908.html */
 
 
-
 char *macaddr_str(macstr_t buf, const n2n_mac_t mac)
 {
     snprintf(buf, N2N_MACSTR_SIZE, "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -185,6 +184,28 @@ char* intoa(uint32_t /* host order */addr, char *buf, uint16_t buf_len)
 }
 
 
+static int extract_ipv4(n2n_sock_t *out, const char* str_orig)
+{
+    int retval = ( 1 != inet_pton(AF_INET, str_orig, out->addr.v4) );
+    if (retval)
+    {
+        traceError("Error extracting IPv4 address: %s", str_orig);
+    }
+    return retval;
+}
+
+
+static int extract_ipv6(n2n_sock_t *out, const char* str_orig)
+{
+    int retval = ( 1 != inet_pton(AF_INET6, str_orig, out->addr.v6) );
+    if (retval)
+    {
+        traceError("Error extracting IPv6 address: %s", str_orig);
+    }
+    return retval;
+}
+
+
 /******************************************************************************
  *
  * LAYER 4
@@ -199,8 +220,7 @@ SOCKET open_socket(int local_port, int bind_any)
 
     if ((sock_fd = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
     {
-        traceError("Unable to create socket [%s][%d]\n",
-            strerror(errno), sock_fd);
+        traceError("Unable to create socket [%s][%d]\n", strerror(errno), sock_fd);
         return (-1);
     }
 
@@ -224,44 +244,51 @@ SOCKET open_socket(int local_port, int bind_any)
 }
 
 
-static int fill_sockaddr(struct sockaddr *out_addr, const n2n_sock_t *sock)
+static int fill_sockaddr(struct sockaddr_storage *out_addr, const n2n_sock_t *sock)
 {
-    struct sockaddr_in *si = NULL;
-
-    if (AF_INET != sock->family)
+    if (AF_INET == sock->family)
     {
-        /* AF_INET6 not implemented */
-        errno = EAFNOSUPPORT;
-        return -1;
+        struct sockaddr_in *si = (struct sockaddr_in *) out_addr;
+        si->sin_family = AF_INET;
+        si->sin_port = htons(sock->port);//TODO
+        memcpy(&si->sin_addr.s_addr, sock->addr.v4, IPV4_SIZE);
+        return 0;
+    }
+    else if (AF_INET6 == sock->family)
+    {
+        struct sockaddr_in6 *si6 = (struct sockaddr_in6 *) out_addr;
+        si6->sin6_family = AF_INET6;
+        si6->sin6_port = htons(sock->port);//TODO
+        si6->sin6_flowinfo = 0;
+        memcpy(&si6->sin6_addr, sock->addr.v6, IPV6_SIZE);
+        si6->sin6_scope_id = 0;
+        return 0;
     }
 
-    si = (struct sockaddr_in *) out_addr;
-    si->sin_family = sock->family;
-    si->sin_port   = htons(sock->port);
-    memcpy(&si->sin_addr.s_addr, sock->addr.v4, IPV4_SIZE);
-    return 0;
+    errno = EAFNOSUPPORT;
+    return -1;
 }
 
-/** Send a datagram to a socket defined by a n2n_sock_t.
+/**
+ * Send a datagram to a socket defined by a n2n_sock_t.
  *
- *  @return -1 on error otherwise number of bytes sent
+ * @return -1 on error otherwise number of bytes sent
  */
-ssize_t sendto_sock(int         sock_fd,
-                    const void *pktbuf,
-                    size_t      pktsize,
+ssize_t sendto_sock(int sock_fd,
+                    const void *pktbuf, size_t pktsize,
                     const n2n_sock_t *dest)
 {
     n2n_sock_str_t sockbuf;
-    struct sockaddr_in dst_addr;
+    struct sockaddr_storage dst_addr;
     ssize_t sent;
 
-    fill_sockaddr((struct sockaddr *) &dst_addr, dest);
+    fill_sockaddr(&dst_addr, dest);
 
     traceDebug("sendto_sock %lu to [%s]", pktsize, sock_to_cstr(sockbuf, dest));//TODO to be removed
 
     sent = sendto(sock_fd,
                   pktbuf, pktsize,
-                  0/*flags*/,
+                  0 /* flags */,
                   (const struct sockaddr *) &dst_addr,
                   sizeof(struct sockaddr_in));
 
@@ -279,10 +306,8 @@ ssize_t sendto_sock(int         sock_fd,
 }
 
 
-
 /* @return zero if the two sockets are equivalent. */
-int sock_equal(const n2n_sock_t *a,
-               const n2n_sock_t *b)
+int sock_equal(const n2n_sock_t *a, const n2n_sock_t *b)
 {
     if (a->port != b->port)
         return 1;
@@ -290,46 +315,36 @@ int sock_equal(const n2n_sock_t *a,
     if (a->family != b->family)
         return 1;
 
-    switch (a->family) /* they are the same */
+    if (a->family == AF_INET)
     {
-    case AF_INET:
-        if (0 != memcmp(a->addr.v4, b->addr.v4, IPV4_SIZE))
-            return 1;
-        break;
-    default:
-        if (0 != memcmp(a->addr.v6, b->addr.v6, IPV6_SIZE))
-            return 1;
-        break;
+        return (0 != memcmp(a->addr.v4, b->addr.v4, IPV4_SIZE));
     }
 
-    return 0;
+    return (0 != memcmp(a->addr.v6, b->addr.v6, IPV6_SIZE));
 }
-
 
 
 extern char *sock_to_cstr(n2n_sock_str_t out,
                           const n2n_sock_t *sock)
 {
     int r;
+    ipstr_t ipstr;
 
     if (NULL == out)
         return NULL;
 
-    memset(out, 0, N2N_SOCKBUF_SIZE);
+    if (NULL == inet_ntop(sock->family, &sock->addr, ipstr, 32/* TODO */))
+    {
+        //TODO log
+        return NULL;
+    }
 
     if (AF_INET6 == sock->family)
-    {
-        /* INET6 not written yet */
-        r = snprintf(out, N2N_SOCKBUF_SIZE, "XXXX:%hu", sock->port);
-        return out;
-    }
+        r = snprintf(out, N2N_SOCKBUF_SIZE, "[%s]:%hu", ipstr, sock->port);//TODO ntoh
     else
-    {
-        const uint8_t *a = sock->addr.v4;
-        r = snprintf(out, N2N_SOCKBUF_SIZE, "%hu.%hu.%hu.%hu:%hu",
-                     (a[0] & 0xff), (a[1] & 0xff), (a[2] & 0xff), (a[3] & 0xff), sock->port);
-        return out;
-    }
+        r = snprintf(out, N2N_SOCKBUF_SIZE, "%s:%hu", ipstr, sock->port);
+
+    return out;
 }
 
 extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str)
@@ -362,28 +377,6 @@ extern n2n_sock_t *sock_from_cstr(n2n_sock_t *out, const n2n_sock_str_t str)
     }
 
     return NULL;
-}
-
-
-static int extract_ipv4(n2n_sock_t *out, const char* str_orig)
-{
-    int retval = inet_pton(AF_INET, str_orig, out->addr.v4);
-    if (retval != 1)
-    {
-        traceError("Error extracting IPv4 address: %s", str_orig);
-    }
-    return (retval != 1);
-}
-
-
-static int extract_ipv6(n2n_sock_t *out, const char* str_orig)
-{
-    int retval = inet_pton(AF_INET6, str_orig, out->addr.v6);
-    if (retval != 1)
-    {
-        traceError("Error extracting IPv6 address: %s", str_orig);
-    }
-    return (retval != 1);
 }
 
 
