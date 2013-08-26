@@ -5,12 +5,11 @@
  *      Author: wolf
  */
 
-#include <string.h>
-#include <errno.h>
-
-#include "n2n.h"//TODO
 #include "n2n_net.h"
 #include "n2n_log.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
 
 
 

@@ -24,31 +24,27 @@
 #ifndef N2N_NET_H_
 #define N2N_NET_H_
 
+#ifdef WIN32
+# include "win32/n2n_win32.h"
+#else /* #ifdef WIN32 */
+//#include <netdb.h>//TODO ???
+# include <sys/socket.h>
 
+# ifdef __linux__
+#  include <linux/if.h>
+# endif /* #ifdef __linux__ */
 
-#ifndef WIN32
-#include <netdb.h>//TODO ???
+# ifdef __FreeBSD__
+#  include <netinet/in_systm.h>
+# endif /* #ifdef __FreeBSD__ */
 
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/param.h>
-#include <pthread.h>
+# include <arpa/inet.h>
+# include <netinet/in.h>
+# include <netinet/ip.h>
+# include <netinet/udp.h>
+#endif /* #ifdef WIN32 */
 
-#ifdef __FreeBSD__
-#include <netinet/in_systm.h>
-#endif /* #ifdef __FreeBSD__ */
-
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/udp.h>
-#include <signal.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#endif /* #ifndef WIN32 */
-
+#include <string.h>
 
 
 
@@ -151,20 +147,18 @@ typedef char n2n_sock_str_t[N2N_SOCKBUF_SIZE];
 
 
 /* functions */
-extern SOCKET open_socket(int local_port, int bind_any);
+SOCKET open_socket(int local_port, int bind_any);
 
-extern ssize_t sendto_sock(int sock_fd,
-                           const void *pktbuf, size_t pktsize,
-                           const n2n_sock_t *dest);
+ssize_t sendto_sock(int sock_fd, const void *pktbuf, size_t pktsize, const n2n_sock_t *dest);
 
-extern int is_empty_ip_address(const n2n_sock_t *sock);
+int is_empty_ip_address(const n2n_sock_t *sock);
 
-extern int sock_equal(const n2n_sock_t *a, const n2n_sock_t *b);
+int sock_equal(const n2n_sock_t *a, const n2n_sock_t *b);
 
-extern char*       sock2str(n2n_sock_str_t out, const n2n_sock_t *sock);
-extern n2n_sock_t* sock_from_cstr(n2n_sock_t *out,  const n2n_sock_str_t str);
+char*       sock2str(n2n_sock_str_t out, const n2n_sock_t *sock);
+n2n_sock_t* sock_from_cstr(n2n_sock_t *out,  const n2n_sock_str_t str);
 
-extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str);
+int str2sock(n2n_sock_t *out, const n2n_sock_str_t str);
 
 
 /******************************************************************************
@@ -184,7 +178,7 @@ typedef enum ip_mode ip_mode_t;
 
 
 /* functions */
-extern int scan_address(uint32_t *ip_addr, ip_mode_t *ip_mode, const char *s);
+int scan_address(uint32_t *ip_addr, ip_mode_t *ip_mode, const char *s);
 
 
 #endif /* N2N_NET_H_ */
