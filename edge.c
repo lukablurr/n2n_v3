@@ -68,16 +68,13 @@ static const n2n_sock_t *supernode_ip(const n2n_edge_t *eee)
 }
 
 
-static void send_packet2net(n2n_edge_t *eee,
-	        uint8_t *decrypted_msg, size_t len);
-
-
 /******************************************************************************/
 
 
-/** Initialize an edge to defaults.
+/**
+ * Initialize an edge to defaults.
  *
- *  This also initializes the NULL transform operation opstruct.
+ * This also initializes the NULL transform operation opstruct.
  */
 static int edge_init(n2n_edge_t *eee)
 {
@@ -1450,7 +1447,7 @@ static void readFromIPSocket(n2n_edge_t *eee)
         return; /* failed to decode packet */
     }
 
-    if (0 != memcmp(cmn.community, eee->community_name, N2N_COMMUNITY_SIZE))
+    if (!community_equal(cmn.community, eee->community_name))
     {
         traceWarning("Received packet with invalid community: %s\n", cmn.community);
         return;
