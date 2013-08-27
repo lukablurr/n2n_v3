@@ -33,39 +33,35 @@ size_t list_size(const n2n_list_head_t *head)
 size_t list_clear(n2n_list_head_t *head)
 {
     size_t count = 0;
-    n2n_list_node_t *scan = LIST_FIRST_NODE(head);
+    n2n_list_node_t *scan = NULL;
+    n2n_list_node_t *next = NULL;
 
-    while (scan)
+    LIST_FOR_EACH_NODE_SAFE(head, scan, next)
     {
-        n2n_list_node_t *crt = scan;
-        scan = scan->next;
-        free(crt); /* free list entry */
-        count++;
+        free(scan); /* free list entry */
+        ++count;
     }
-    LIST_FIRST_NODE(head) = NULL;
+    list_head_init(head);
 
     return count;
 }
 
 void list_reverse(n2n_list_head_t *head)
 {
-    n2n_list_node_t *aux = head->node.next;
+    n2n_list_head_t aux = *head;
+    n2n_list_node_t *scan = NULL;
     n2n_list_node_t *next = NULL;
-    head->node.next = NULL;
 
-    while (aux)
+    list_head_init(head);
+    LIST_FOR_EACH_NODE_SAFE(&aux, scan, next)
     {
-        next = aux->next;
-        list_add(head, aux);
-        aux = next;
+        list_add(head, scan);
     }
 }
 
-
-/*
- * SORTING
+/**
+ * Merge sort
  */
-
 static void merge(n2n_list_node_t *left,  size_t left_size,
                   n2n_list_node_t *right, size_t right_size,
                   n2n_list_head_t *merged,
@@ -86,7 +82,7 @@ static void merge_sort(n2n_list_head_t *head, size_t size, cmp_func_t func)//TOD
     middle = size / 2;
 
     LIST_FIRST_NODE(&left) = LIST_FIRST_NODE(head);
-    for (i = 0, left_last = LIST_FIRST_NODE(&left); i < middle - 1; i++)
+    for (i = 0, left_last = LIST_FIRST_NODE(head); i < middle - 1; i++)
     {
         left_last = left_last->next;
     }
@@ -135,7 +131,6 @@ static void merge(n2n_list_node_t *left,  size_t left_size,
         last_added->next = right;
     }
 }
-
 
 void list_sort(n2n_list_head_t *head, cmp_func_t func)
 {
