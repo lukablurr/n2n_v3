@@ -982,32 +982,38 @@ static int run_loop(n2n_sn_t *sss)
     uint8_t pktbuf[N2N_SN_PKTBUF_SIZE];
     int keep_running = 1;
 
+    int      max_sock = 0;
+    fd_set   proto_socket_mask;
+
+
+    /* Setup prototype socket mask */
+    FD_ZERO(&proto_socket_mask);
+    FD_SET(sss->sock, &proto_socket_mask);
+    FD_SET(sss->mgmt_sock, &proto_socket_mask);
+    max_sock = MAX(sss->sock, sss->mgmt_sock);
+#ifdef N2N_MULTIPLE_SUPERNODES
+    FD_SET(sss->sn_sock, &proto_socket_mask);
+    max_sock = MAX(max_sock, sss->sn_sock);
+#endif
+
     sss->start_time = time(NULL);
 
     while (keep_running)
     {
         int              rc;
         ssize_t          bread;
-        int              max_sock;
         fd_set           socket_mask;
         struct timeval   wait_time;
         time_t           now = 0;
 
-        FD_ZERO(&socket_mask);
-        max_sock = MAX(sss->sock, sss->mgmt_sock);
-
 #ifdef N2N_MULTIPLE_SUPERNODES
-        max_sock = MAX(max_sock, sss->sn_sock);
-        FD_SET(sss->sn_sock, &socket_mask);
-
         if (sss->snm_discovery_state != N2N_SNM_STATE_READY)
         {
             communities_discovery(sss, time(NULL));
         }
 #endif
 
-        FD_SET(sss->sock, &socket_mask);
-        FD_SET(sss->mgmt_sock, &socket_mask);
+        socket_mask = proto_socket_mask;
 
         wait_time.tv_sec = 10;
         wait_time.tv_usec = 0;
