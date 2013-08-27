@@ -107,9 +107,9 @@ size_t purge_expired_registrations(n2n_list_head_t *peers)
  */
 size_t purge_peer_list(n2n_list_head_t *peers, time_t purge_before)
 {
-    peer_info_t *scan;// = NULL;
-    peer_info_t *prev;// = NULL;
-    peer_info_t *next;// = NULL;
+    peer_info_t *scan = NULL;
+    peer_info_t *prev = NULL;
+    peer_info_t *next = NULL;
     size_t retval = 0;
 
     N2N_LIST_FOR_EACH_SAFE(peers, scan, next)
