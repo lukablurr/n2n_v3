@@ -13,6 +13,7 @@
 #include "n2n_wire.h"
 #include <string.h>
 
+
 int encode_uint8(uint8_t *base,
                  size_t *idx,
                  const uint8_t v)
@@ -35,6 +36,7 @@ int decode_uint8(uint8_t *out,
     --(*rem);
     return 1;
 }
+
 
 int encode_uint16(uint8_t *base,
                   size_t *idx,
@@ -60,6 +62,7 @@ int decode_uint16(uint16_t *out,
     *rem -= 2;
     return 2;
 }
+
 
 int encode_uint32(uint8_t *base,
                   size_t *idx,
@@ -90,6 +93,7 @@ int decode_uint32(uint32_t *out,
     return 4;
 }
 
+
 int encode_buf(uint8_t *base,
                size_t *idx,
                const void *p,
@@ -117,7 +121,6 @@ int decode_buf(uint8_t *out,
 }
 
 
-
 int encode_mac(uint8_t *base,
                size_t *idx,
                const n2n_mac_t m)
@@ -134,6 +137,71 @@ int decode_mac(uint8_t *out, /* of size N2N_MAC_SIZE. This clearer than passing 
 }
 
 
+int encode_sock(uint8_t *base,
+                size_t *idx,
+                const n2n_sock_t *sock)
+{
+    int retval = 0;
+    uint16_t f;
+
+    switch (sock->family)
+    {
+    case AF_INET:
+    {
+        f = 0;
+        retval += encode_uint16(base, idx, f);
+        retval += encode_uint16(base, idx, sock->port);
+        retval += encode_buf(base, idx, sock->addr.v4, IPV4_SIZE);
+        break;
+    }
+    case AF_INET6:
+    {
+        f = 0x8000;
+        retval += encode_uint16(base, idx, f);
+        retval += encode_uint16(base, idx, sock->port);
+        retval += encode_buf(base, idx, sock->addr.v6, IPV6_SIZE);
+        break;
+    }
+    default:
+        retval = -1;
+        break;
+    }
+
+    return retval;
+}
+
+int decode_sock(n2n_sock_t *sock,
+                const uint8_t *base,
+                size_t *rem,
+                size_t *idx)
+{
+    size_t *idx0 = idx;
+    uint16_t f;
+
+    decode_uint16(&f, base, rem, idx);
+
+    if (f & 0x8000)
+    {
+        /* IPv6 */
+        sock->family = AF_INET6;
+        decode_uint16(&(sock->port), base, rem, idx);
+        decode_buf(sock->addr.v6, IPV6_SIZE, base, rem, idx);
+    }
+    else
+    {
+        /* IPv4 */
+        sock->family = AF_INET;
+        decode_uint16(&(sock->port), base, rem, idx);
+        memset(sock->addr.v6, 0, IPV6_SIZE); /* so memcmp() works for equality. */
+        decode_buf(sock->addr.v4, IPV4_SIZE, base, rem, idx);
+    }
+
+    return (idx - idx0);
+}
+
+/**
+ * Message encoding/decoding
+ */
 
 int encode_common(uint8_t *base,
                   size_t *idx,
@@ -175,68 +243,6 @@ int decode_common(n2n_common_t *out,
 }
 
 
-int encode_sock(uint8_t *base,
-                size_t *idx,
-                const n2n_sock_t *sock)
-{
-    int retval = 0;
-    uint16_t f;
-
-    switch (sock->family)
-    {
-    case AF_INET:
-    {
-        f = 0;
-        retval += encode_uint16(base, idx, f);
-        retval += encode_uint16(base, idx, sock->port);
-        retval += encode_buf(base, idx, sock->addr.v4, IPV4_SIZE);
-        break;
-    }
-    case AF_INET6:
-    {
-        f = 0x8000;
-        retval += encode_uint16(base, idx, f);
-        retval += encode_uint16(base, idx, sock->port);
-        retval += encode_buf(base, idx, sock->addr.v6, IPV6_SIZE);
-        break;
-    }
-    default:
-        retval = -1;
-    }
-
-    return retval;
-}
-
-
-int decode_sock(n2n_sock_t *sock,
-                const uint8_t *base,
-                size_t *rem,
-                size_t *idx)
-{
-    size_t *idx0 = idx;
-    uint16_t f;
-
-    decode_uint16(&f, base, rem, idx);
-
-    if (f & 0x8000)
-    {
-        /* IPv6 */
-        sock->family = AF_INET6;
-        decode_uint16(&(sock->port), base, rem, idx);
-        decode_buf(sock->addr.v6, IPV6_SIZE, base, rem, idx);
-    }
-    else
-    {
-        /* IPv4 */
-        sock->family = AF_INET;
-        decode_uint16(&(sock->port), base, rem, idx);
-        memset(sock->addr.v6, 0, IPV6_SIZE); /* so memcmp() works for equality. */
-        decode_buf(sock->addr.v4, IPV4_SIZE, base, rem, idx);
-    }
-
-    return (idx - idx0);
-}
-
 int encode_REGISTER(uint8_t *base,
                     size_t *idx,
                     const n2n_common_t *common,
@@ -275,6 +281,7 @@ int decode_REGISTER(n2n_REGISTER_t *reg,
     return retval;
 }
 
+
 int encode_REGISTER_SUPER(uint8_t *base,
                           size_t *idx,
                           const n2n_common_t *common,
@@ -305,6 +312,7 @@ int decode_REGISTER_SUPER(n2n_REGISTER_SUPER_t *reg,
     retval += decode_buf(reg->auth.token, reg->auth.toksize, base, rem, idx);
     return retval;
 }
+
 
 int encode_REGISTER_ACK(uint8_t *base,
                         size_t *idx,
@@ -350,6 +358,7 @@ int decode_REGISTER_ACK(n2n_REGISTER_ACK_t *reg,
 
     return retval;
 }
+
 
 int encode_REGISTER_SUPER_ACK(uint8_t *base,
                               size_t *idx,
@@ -417,7 +426,8 @@ int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
     return retval;
 }
 
-/******************************************************************************************************************/
+
+#ifdef N2N_MULTIPLE_SUPERNODES
 
 int encode_FEDERATION(uint8_t *base, size_t *idx,
                       const n2n_common_t *cmn, const n2n_FEDERATION_t *fed)
@@ -439,6 +449,7 @@ int decode_FEDERATION(n2n_FEDERATION_t *fed, const n2n_common_t *cmn, /* info on
     return retval;
 }
 
+
 int encode_QUERY_SUPER(uint8_t *base, size_t *idx,
                        const n2n_common_t *cmn, const n2n_QUERY_SUPER_t *q)
 {
@@ -458,6 +469,7 @@ int decode_QUERY_SUPER(n2n_QUERY_SUPER_t *q, const n2n_common_t *cmn, /* info on
     return retval;
 
 }
+
 
 int encode_QUERY_SUPER_ACK(uint8_t *base, size_t *idx,
                            const n2n_common_t *cmn, const n2n_QUERY_SUPER_ACK_t *qack)
@@ -489,8 +501,8 @@ int decode_QUERY_SUPER_ACK(n2n_QUERY_SUPER_ACK_t *qack, const n2n_common_t *cmn,
     return retval;
 }
 
+#endif /* #ifdef N2N_MULTIPLE_SUPERNODES */
 
-/******************************************************************************************************************/
 
 int encode_PACKET(uint8_t *base,
                   size_t *idx,
@@ -509,7 +521,6 @@ int encode_PACKET(uint8_t *base,
 
     return retval;
 }
-
 
 int decode_PACKET(n2n_PACKET_t *pkt,
                   const n2n_common_t *cmn, /* info on how to interpret it */
@@ -532,12 +543,17 @@ int decode_PACKET(n2n_PACKET_t *pkt,
     return retval;
 }
 
-
-void init_cmn(n2n_common_t *cmn, n2n_pc_t pc, n2n_flags_t flags, const n2n_community_t community)
+/**
+ * Helper function for initializing n2n_common_t structures.
+ */
+void init_cmn(n2n_common_t *cmn,
+              n2n_pc_t pc,
+              n2n_flags_t flags,
+              const n2n_community_t community)
 {
     memset(cmn, 0, sizeof(n2n_common_t));
-    cmn->ttl   = N2N_DEFAULT_TTL;
-    cmn->pc    = pc;
+    cmn->ttl = N2N_DEFAULT_TTL;
+    cmn->pc = pc;
     cmn->flags = flags;
     memcpy(cmn->community, community, N2N_COMMUNITY_SIZE);
 }
