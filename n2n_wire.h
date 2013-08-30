@@ -50,6 +50,12 @@ enum n2n_pc
     n2n_register_super_ack=6,   /* ACK from supernode to edge */
     n2n_register_super_nak=7,   /* NAK from supernode to edge - registration refused */
     n2n_federation=8            /* Not used by edge */
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+    , /* because of -pedantic */
+    n2n_query_super = 9,
+    n2n_query_super_ack = 10,
+#endif
 };
 
 typedef enum n2n_pc n2n_pc_t;
@@ -62,8 +68,15 @@ typedef enum n2n_pc n2n_pc_t;
 #define N2N_FLAGS_TYPE_MASK             0x001f  /* 0 - 31 */
 #define N2N_FLAGS_BITS_MASK             0xffe0
 
-#define IPV4_SIZE                       4
-#define IPV6_SIZE                       16
+/* The bits in flag that are used in federation */
+
+/* | | |A|S| */
+#define N2N_FLAGS_FED_SUBSCRIBE         0x1000
+#define N2N_FLAGS_FED_ACK               0x2000
+#define N2N_FLAGS_FED_C                 0x4000
+
+#define IPV4_SIZE                       4//TODO already in net
+#define IPV6_SIZE                       16//TODO already in net
 
 
 #define N2N_AUTH_TOKEN_SIZE             32      /* bytes */
@@ -91,6 +104,15 @@ struct n2n_auth
 typedef struct n2n_auth n2n_auth_t;
 
 
+
+
+
+/******************************************************************************
+ *
+ * MESSAGES STRUCTURES
+ *
+ */
+
 struct n2n_common
 {
     /* int                 version; */
@@ -102,6 +124,7 @@ struct n2n_common
 
 typedef struct n2n_common n2n_common_t;
 
+
 struct n2n_REGISTER
 {
     n2n_cookie_t        cookie;         /* Link REGISTER and REGISTER_ACK */
@@ -112,6 +135,7 @@ struct n2n_REGISTER
 
 typedef struct n2n_REGISTER n2n_REGISTER_t;
 
+
 struct n2n_REGISTER_ACK
 {
     n2n_cookie_t        cookie;         /* Return cookie from REGISTER */
@@ -121,6 +145,7 @@ struct n2n_REGISTER_ACK
 };
 
 typedef struct n2n_REGISTER_ACK n2n_REGISTER_ACK_t;
+
 
 struct n2n_PACKET
 {
@@ -179,6 +204,51 @@ struct n2n_REGISTER_SUPER_NAK
 
 typedef struct n2n_REGISTER_SUPER_NAK n2n_REGISTER_SUPER_NAK_t;
 
+
+
+
+/******************************************************************************************************************/
+
+struct n2n_FEDERATION
+{
+    uint16_t            edges_num;
+};
+
+//TODO flags: keepalive, someones dead
+
+typedef struct n2n_FEDERATION n2n_FEDERATION_t;
+
+
+
+/******************************************************************************************************************/
+
+
+#ifdef N2N_MULTIPLE_SUPERNODES
+
+struct n2n_QUERY_SUPER
+{
+    n2n_cookie_t        cookie;         /* Link QUERY_SUPER and QUERY_SUPER_ACK */
+};
+
+typedef struct n2n_QUERY_SUPER n2n_QUERY_SUPER_t;
+
+struct n2n_QUERY_SUPER_ACK
+{
+    n2n_cookie_t        cookie;         /* Link QUERY_SUPER and QUERY_SUPER_ACK */
+    uint8_t             num_sn;         /* Number of supernodes that were send
+                                         * even if we cannot store them all. If
+                                         * non-zero then members is valid. */
+    n2n_sock_t          members[4];//TODO number
+};
+
+typedef struct n2n_QUERY_SUPER_ACK n2n_QUERY_SUPER_ACK_t;
+#endif
+
+
+
+
+
+/******************************************************************************************************************/
 
 
 struct n2n_buf
@@ -297,6 +367,31 @@ int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
                               const uint8_t *base,
                               size_t *rem,
                               size_t *idx);
+
+/******************************************************************************************************************/
+int encode_FEDERATION(uint8_t *base, size_t *idx,
+                      const n2n_common_t *cmn, const n2n_FEDERATION_t *fed);
+
+int decode_FEDERATION(n2n_FEDERATION_t *fed, const n2n_common_t *cmn, /* info on how to interpret it */
+                      const uint8_t *base, size_t *rem, size_t *idx);
+
+/******************************************************************************************************************/
+
+int encode_QUERY_SUPER(uint8_t *base, size_t *idx,
+                       const n2n_common_t *cmn, const n2n_QUERY_SUPER_t *q);
+
+int decode_QUERY_SUPER(n2n_QUERY_SUPER_t *q, const n2n_common_t *cmn, /* info on how to interpret it */
+                       const uint8_t *base, size_t *rem, size_t *idx);
+
+int encode_QUERY_SUPER_ACK(uint8_t *base, size_t *idx,
+                           const n2n_common_t *cmn, const n2n_QUERY_SUPER_ACK_t *qack);
+
+int decode_QUERY_SUPER_ACK(n2n_QUERY_SUPER_ACK_t *qack, const n2n_common_t *cmn, /* info on how to interpret it */
+                           const uint8_t *base, size_t *rem, size_t *idx);
+
+
+
+/******************************************************************************************************************/
 
 int encode_PACKET(uint8_t *base,
                   size_t *idx,

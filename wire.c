@@ -417,6 +417,81 @@ int decode_REGISTER_SUPER_ACK(n2n_REGISTER_SUPER_ACK_t *reg,
     return retval;
 }
 
+/******************************************************************************************************************/
+
+int encode_FEDERATION(uint8_t *base, size_t *idx,
+                      const n2n_common_t *cmn, const n2n_FEDERATION_t *fed)
+{
+    int i;
+    int retval = 0;
+    retval += encode_common(base, idx, cmn);
+    retval += encode_uint16(base, idx, fed->edges_num);
+    return retval;
+}
+
+int decode_FEDERATION(n2n_FEDERATION_t *fed, const n2n_common_t *cmn, /* info on how to interpret it */
+                      const uint8_t *base, size_t *rem, size_t *idx)
+{
+    int i;
+    size_t retval = 0;
+    memset(fed, 0, sizeof(n2n_FEDERATION_t));
+    retval += decode_uint16(&fed->edges_num, base, rem, idx);
+    return retval;
+}
+
+int encode_QUERY_SUPER(uint8_t *base, size_t *idx,
+                       const n2n_common_t *cmn, const n2n_QUERY_SUPER_t *q)
+{
+    int retval = 0;
+    retval += encode_common(base, idx, cmn);
+    retval += encode_buf(base, idx, q->cookie, N2N_COOKIE_SIZE);
+    return retval;
+
+}
+
+int decode_QUERY_SUPER(n2n_QUERY_SUPER_t *q, const n2n_common_t *cmn, /* info on how to interpret it */
+                       const uint8_t *base, size_t *rem, size_t *idx)
+{
+    int retval = 0;
+    memset(q, 0, sizeof(n2n_QUERY_SUPER_t));
+    retval += decode_buf(q->cookie, N2N_COOKIE_SIZE, base, rem, idx);
+    return retval;
+
+}
+
+int encode_QUERY_SUPER_ACK(uint8_t *base, size_t *idx,
+                           const n2n_common_t *cmn, const n2n_QUERY_SUPER_ACK_t *qack)
+{
+    int i;
+    int retval = 0;
+    retval += encode_common(base, idx, cmn);
+    retval += encode_buf(base, idx, qack->cookie, N2N_COOKIE_SIZE);
+    retval += encode_uint8(base, idx, qack->num_sn);
+    for (i = 0; i < qack->num_sn; i++)
+    {
+        retval += encode_sock(base, idx, &qack->members[i]);
+    }
+    return retval;
+}
+
+int decode_QUERY_SUPER_ACK(n2n_QUERY_SUPER_ACK_t *qack, const n2n_common_t *cmn, /* info on how to interpret it */
+                           const uint8_t *base, size_t *rem, size_t *idx)
+{
+    int i;
+    int retval = 0;
+    memset(qack, 0, sizeof(n2n_QUERY_SUPER_ACK_t));
+    retval += decode_buf(qack->cookie, N2N_COOKIE_SIZE, base, rem, idx);
+    retval += decode_uint8(&qack->num_sn, base, rem, idx);
+    for (i = 0; i < qack->num_sn; i++)
+    {
+        retval += decode_sock(&qack->members[i], base, rem, idx);
+    }
+    return retval;
+}
+
+
+/******************************************************************************************************************/
+
 int encode_PACKET(uint8_t *base,
                   size_t *idx,
                   const n2n_common_t *common,
@@ -460,7 +535,7 @@ int decode_PACKET(n2n_PACKET_t *pkt,
 
 void init_cmn(n2n_common_t *cmn, n2n_pc_t pc, n2n_flags_t flags, const n2n_community_t community)
 {
-    memset(cmn, 0, sizeof(cmn));
+    memset(cmn, 0, sizeof(n2n_common_t));
     cmn->ttl   = N2N_DEFAULT_TTL;
     cmn->pc    = pc;
     cmn->flags = flags;
