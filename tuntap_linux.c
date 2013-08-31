@@ -116,7 +116,7 @@ int tuntap_open(tuntap_dev *device, ip_mode_t ip_mode)
     }
 
 
-    intoa(device->ip_addr, ipstr, sizeof(ipstr));
+    ipv4_to_str(ipstr, sizeof(ipstr_t), (const uint8_t *) &device->ip_addr);//TODO make array
 
     if (ip_mode == N2N_IPM_DHCP)
     {
