@@ -1,5 +1,6 @@
-
-N2N_VERSION=2.1.0
+N2N_MAJOR=3
+N2N_MINOR=0
+N2N_VERSION=$(N2N_MAJOR).$(N2N_MINOR)
 N2N_OSNAME=$(shell uname -p)
 
 ########
@@ -68,7 +69,7 @@ else
 endif
 
 ifeq ($(SNM), yes)
-N2N_OBJS+=sn_multiple.o sn_multiple_wire.o 
+N2N_OBJS+=sn_multiple.o
 endif
 
 LIBS_EDGE+=$(LIBS_EDGE_OPT)
@@ -83,7 +84,7 @@ endif
 APPS=edge
 APPS+=supernode
 
-DOCS=edge.8.gz supernode.1.gz n2n_v2.7.gz
+DOCS=edge.8.gz supernode.1.gz n2n_v$(N2N_VERSION).gz
 
 all: $(APPS) $(DOCS)
 
@@ -120,11 +121,11 @@ version.o: Makefile
 clean:
 	rm -rf $(N2N_OBJS) $(N2N_LIB) $(APPS) $(DOCS) test *.dSYM *~
 
-install: edge supernode edge.8.gz supernode.1.gz n2n_v2.7.gz
+install: edge supernode edge.8.gz supernode.1.gz n2n_v$(N2N_VERSION).gz
 	echo "MANDIR=$(MANDIR)"
 	$(MKDIR) $(SBINDIR) $(MAN1DIR) $(MAN7DIR) $(MAN8DIR)
 	$(INSTALL_PROG) supernode $(SBINDIR)/
 	$(INSTALL_PROG) edge $(SBINDIR)/
 	$(INSTALL_DOC) edge.8.gz $(MAN8DIR)/
 	$(INSTALL_DOC) supernode.1.gz $(MAN1DIR)/
-	$(INSTALL_DOC) n2n_v2.7.gz $(MAN7DIR)/
+	$(INSTALL_DOC) n2n_v$(N2N_VERSION).gz $(MAN7DIR)/
