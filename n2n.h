@@ -86,6 +86,10 @@
 #define MSG_TYPE_REGISTER_SUPER_ACK     6
 #define MSG_TYPE_REGISTER_SUPER_NAK     7
 #define MSG_TYPE_FEDERATION             8
+#ifdef N2N_MULTIPLE_SUPERNODES
+# define MSG_TYPE_QUERY_SUPER           9
+# define MSG_TYPE_QUERY_SUPER_ACK       10
+#endif
 
 /* Functions */
 extern char *msg_type2str(uint16_t msg_type);
@@ -142,7 +146,9 @@ size_t purge_expired_registrations(n2n_list_head_t *peers);
 /* Search functions */
 peer_info_t *find_peer_by_mac(n2n_list_head_t *peers, const n2n_mac_t mac);
 peer_info_t *find_peer_by_mac_for_removal(n2n_list_head_t *peers, const n2n_mac_t mac,
-                                          peer_info_t **prev);
+                                          n2n_list_node_t **prev_node);
+
+peer_info_t *find_peer_by_community(n2n_list_head_t *peers, const n2n_community_t comm);
 
 
 

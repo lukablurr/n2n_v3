@@ -159,19 +159,33 @@ peer_info_t *find_peer_by_mac(n2n_list_head_t *peers, const n2n_mac_t mac)
 
 
 peer_info_t *find_peer_by_mac_for_removal(n2n_list_head_t *peers, const n2n_mac_t mac,
-                                          peer_info_t **prev)
+                                          n2n_list_node_t **prev_node)
 {
     peer_info_t *peer = NULL;
 
+    *prev_node = &peers->node;
     N2N_LIST_FOR_EACH(peers, peer)
     {
         if (mac_equal(mac, peer->mac_addr))//TODO
             return peer;
 
-        *prev = peer;
+        *prev_node = &peer->list;
     }
 
-    *prev = NULL;
+    *prev_node = NULL;
+    return NULL;
+}
+
+peer_info_t *find_peer_by_community(n2n_list_head_t *peers, const n2n_community_t comm)
+{
+    peer_info_t *peer = NULL;
+
+    N2N_LIST_FOR_EACH(peers, peer)
+    {
+        if (community_equal(comm, peer->community_name))//TODO
+            return peer;
+    }
+
     return NULL;
 }
 
