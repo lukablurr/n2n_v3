@@ -110,6 +110,7 @@ typedef char ipstr_t[32];
 
 
 extern char *intoa(uint32_t addr, char *buf, uint16_t buf_len);
+const char *ipv4_to_str(char *buf, size_t buf_len, const uint8_t* ip);
 
 
 /******************************************************************************
@@ -159,6 +160,12 @@ char*       sock2str(n2n_sock_str_t out, const n2n_sock_t *sock);
 n2n_sock_t* sock_from_cstr(n2n_sock_t *out,  const n2n_sock_str_t str);
 
 int str2sock(n2n_sock_t *out, const n2n_sock_str_t str);
+
+void sock_cpy_addr(n2n_sock_t *dst, const n2n_sock_t *src);
+void sock_cpy(n2n_sock_t *dst, const n2n_sock_t *src);
+
+int sockaddr2sock(n2n_sock_t *out, const struct sockaddr_storage *sockaddr);
+int sock2sockaddr(struct sockaddr_storage *out, const n2n_sock_t *sock);
 
 
 /******************************************************************************

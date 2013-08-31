@@ -194,6 +194,12 @@ static int extract_ipv4(n2n_sock_t *out, const char* str_orig)
 }
 
 
+const char *ipv4_to_str(char *buf, size_t buf_len, const uint8_t* ip)
+{
+    return inet_ntop(AF_INET, ip, buf, buf_len);
+}
+
+
 static int extract_ipv6(n2n_sock_t *out, const char* str_orig)
 {
     int retval = ( 1 != inet_pton(AF_INET6, str_orig, out->addr.v6) );
@@ -281,9 +287,9 @@ ssize_t sendto_sock(int sock_fd,
     struct sockaddr_storage dst_addr;
     ssize_t sent;
 
-    fill_sockaddr(&dst_addr, dest);
+    sock2sockaddr(&dst_addr, dest);
 
-    traceDebug("sendto_sock %lu to [%s]", pktsize, sock2str(sockbuf, dest));//TODO to be removed
+    //traceDebug("sendto_sock %lu to [%s]", pktsize, sock2str(sockbuf, dest));
 
     sent = sendto(sock_fd,
                   pktbuf, pktsize,
@@ -333,14 +339,14 @@ extern char *sock2str(n2n_sock_str_t out, const n2n_sock_t *sock)
 
     if (NULL == inet_ntop(sock->family, &sock->addr, ipstr, 32/* TODO */))
     {
-        //TODO log
+        traceError("inet_ntop() [%s]\n", strerror(errno));
         return NULL;
     }
 
     if (AF_INET6 == sock->family)
-        r = snprintf(out, N2N_SOCKBUF_SIZE, "[%s]:%hu", ipstr, sock->port);//TODO ntoh
+        r = snprintf(out, N2N_SOCKBUF_SIZE, "[%s]:%hu", ipstr, ntohs(sock->port));
     else
-        r = snprintf(out, N2N_SOCKBUF_SIZE, "%s:%hu", ipstr, sock->port);
+        r = snprintf(out, N2N_SOCKBUF_SIZE, "%s:%hu", ipstr, ntohs(sock->port));
 
     return out;
 }
@@ -395,6 +401,7 @@ extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str_orig)
         {
             *last_colon_pos = '\0';
             out->port = atoi(last_colon_pos + 1);
+            out->port = htons(out->port);
         }
 
         out->family = AF_INET;
@@ -414,6 +421,7 @@ extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str_orig)
             {
                 //*last_colon_pos = '\0';
                 out->port = atoi(last_colon_pos + 1);
+                out->port = htons(out->port);
             }
 
             from_pos += 1;
@@ -427,6 +435,71 @@ extern int str2sock(n2n_sock_t *out, const n2n_sock_str_t str_orig)
     }
 
     return retval;
+}
+
+
+
+void sock_cpy_addr(n2n_sock_t *dst, const n2n_sock_t *src)
+{
+    dst->family = src->family;
+    if (src->family == AF_INET)
+        memcpy(dst->addr.v4, src->addr.v4, IPV4_SIZE);
+    else
+        memcpy(dst->addr.v6, src->addr.v6, IPV6_SIZE);
+}
+
+void sock_cpy(n2n_sock_t *dst, const n2n_sock_t *src)
+{
+    dst->port = src->port;
+    sock_cpy_addr(dst, src);
+}
+
+int sockaddr2sock(n2n_sock_t *out, const struct sockaddr_storage *sockaddr)
+{
+    if (sockaddr->ss_family == AF_INET)
+    {
+        const struct sockaddr_in *si = (const struct sockaddr_in *) sockaddr;
+        out->family = AF_INET;
+        out->port = si->sin_port;
+        memcpy(out->addr.v4, &si->sin_addr.s_addr, IPV4_SIZE);
+        return 0;
+    }
+    else if (sockaddr->ss_family == AF_INET6)
+    {
+        const struct sockaddr_in6 *si6 = (const struct sockaddr_in6 *) sockaddr;
+        out->family = AF_INET6;
+        out->port = si6->sin6_port;
+        memcpy(out->addr.v6, &si6->sin6_addr, IPV6_SIZE);
+        return 0;
+    }
+
+    errno = EAFNOSUPPORT;
+    return -1;
+}
+
+int sock2sockaddr(struct sockaddr_storage *out, const n2n_sock_t *sock)//TODO see fill_sockaddr()
+{
+    if (AF_INET == sock->family)
+    {
+        struct sockaddr_in *si = (struct sockaddr_in *) out;
+        si->sin_family = AF_INET;
+        si->sin_port = sock->port;
+        memcpy(&si->sin_addr.s_addr, sock->addr.v4, IPV4_SIZE);
+        return 0;
+    }
+    else if (AF_INET6 == sock->family)
+    {
+        struct sockaddr_in6 *si6 = (struct sockaddr_in6 *) out;
+        si6->sin6_family = AF_INET6;
+        si6->sin6_port = sock->port;
+        si6->sin6_flowinfo = 0;
+        memcpy(&si6->sin6_addr, sock->addr.v6, IPV6_SIZE);
+        si6->sin6_scope_id = 0;
+        return 0;
+    }
+
+    errno = EAFNOSUPPORT;
+    return -1;
 }
 
 
