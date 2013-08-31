@@ -36,7 +36,7 @@
  * subtraction to return the pointer to the enclosing type.
  */
 #define CONTAINER_OF(member_ptr, containing_type, member) \
-     ((containing_type *) ((char *)(member_ptr) - offsetof(containing_type, member))
+     ((containing_type *) ((char *)(member_ptr) - offsetof(containing_type, member)))
 
 /**
  * CONTAINER_OFF_VAR - get offset of a field in enclosing structure
@@ -174,7 +174,7 @@ static inline int list_empty(const n2n_list_head_t *head)
  * @member: the list_node member of the type
  */
 #define LIST_FIRST_ENTRY(head, type, member) \
-    LIST_ENTRY((head)->next, type, member)
+    (list_empty(head) ? NULL : LIST_ENTRY((head)->node.next, type, member))
 
 /* Offset helper functions so we only single-evaluate. */
 static inline void *list_node_to_off_(n2n_list_node_t *node, size_t off)
@@ -253,12 +253,14 @@ static inline n2n_list_node_t *list_node_from_off_(void *ptr, size_t off)
  * - The member name in N2N is always 'list'
  */
 
+#define N2N_LIST_ENTRY(node, type) \
+    LIST_ENTRY(node, type, list)
 
 #define N2N_LIST_FIRST_ENTRY(head, type) \
     LIST_FIRST_ENTRY(head, type, list)
 
-#define N2N_LIST_NEXT_ENTRY(ptr) \
-    LIST_NEXT_ENTRY(ptr, list)
+#define N2N_LIST_NEXT_ENTRY(ptr, type) \
+    CONTAINER_OF(ptr->list.next, type, list)
 
 #define N2N_LIST_FOR_EACH(head, node) \
     LIST_FOR_EACH(head, node, list)
