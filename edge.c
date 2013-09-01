@@ -1099,7 +1099,7 @@ static void readFromTAPSocket(n2n_edge_t *eee)
 
     if (eee->drop_multicast &&
         (is_ipv6_multicast_mac(dst_mac) ||
-         is_multicast_mac(dst_mac)))
+         is_ipv4_multicast_mac(dst_mac)))
     {
         traceDebug("Dropping multicast");
     }

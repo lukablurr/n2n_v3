@@ -46,7 +46,7 @@ int is_broadcast_mac(const uint8_t *mac)
  * MAC in range 01:00:5E:00:00:00 - 01:00:5E:7F:FF:FF is
  * IPv4 multicast ethernet address [RFC1112].
  */
-int is_multicast_mac(const uint8_t *mac)
+int is_ipv4_multicast_mac(const uint8_t *mac)
 {
     return (0 == memcmp(mac, multicast_addr, 3) &&
             (0 == (0x80 & mac[3])));
@@ -64,7 +64,7 @@ int is_ipv6_multicast_mac(const uint8_t *mac)
 uint8_t is_multi_broadcast_mac(const uint8_t *mac)
 {
     return (is_broadcast_mac(mac) ||
-            is_multicast_mac(mac) ||
+            is_ipv4_multicast_mac(mac) ||
             is_ipv6_multicast_mac(mac));
 }
 /* http://www.faqs.org/rfcs/rfc908.html */

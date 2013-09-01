@@ -81,7 +81,7 @@ typedef struct ether_hdr ether_hdr_t;
 /* functions */
 int is_empty_mac(const uint8_t *mac);
 int is_broadcast_mac(const uint8_t *mac);
-int is_multicast_mac(const uint8_t *mac);
+int is_ipv4_multicast_mac(const uint8_t *mac);
 int is_ipv6_multicast_mac(const uint8_t *mac);
 
 uint8_t is_multi_broadcast_mac(const uint8_t *dest_mac);
