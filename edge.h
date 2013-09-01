@@ -14,6 +14,9 @@
 #include "n2n_transforms.h"
 #include "n2n_list.h"
 #include "tuntap.h"
+#ifdef N2N_MULTIPLE_SUPERNODES
+# include "sn_multiple.h"
+#endif
 
 
 
@@ -22,11 +25,11 @@
 #define REGISTER_SUPER_INTERVAL_DFL     20 /* sec */
 #else  /* #if defined(DEBUG) */
 #define SOCKET_TIMEOUT_INTERVAL_SECS    10
-#define REGISTER_SUPER_INTERVAL_DFL     60 /* sec */
+#define REGISTER_SUPER_INTERVAL_DFL     6 /*TODO 60 sec */
 #endif /* #if defined(DEBUG) */
 
-#define REGISTER_SUPER_INTERVAL_MIN     20   /* sec */
-#define REGISTER_SUPER_INTERVAL_MAX     3600 /* sec */
+#define REGISTER_SUPER_INTERVAL_MIN     2   /* TODO 20 sec */
+#define REGISTER_SUPER_INTERVAL_MAX     6 /* TODO 3600 sec */
 
 #define IFACE_UPDATE_INTERVAL           (30) /* sec. How long it usually takes to get an IP lease. */
 #define TRANSOP_TICK_INTERVAL           (10) /* sec */
@@ -50,7 +53,7 @@
 
 typedef char n2n_sn_name_t[N2N_EDGE_SN_HOST_SIZE];
 
-#ifdef N2N_MULTIPLE_SUPERNODES
+#ifdef N2N_MULTIPLE_SUPERNODESx
     #define N2N_EDGE_NUM_SUPERNODES           N2N_MAX_SN_PER_COMM
 #else
     #define N2N_EDGE_NUM_SUPERNODES 2
@@ -58,6 +61,14 @@ typedef char n2n_sn_name_t[N2N_EDGE_SN_HOST_SIZE];
 #define N2N_EDGE_SUP_ATTEMPTS   3       /* Number of failed attmpts before moving on to next supernode. */
 
 
+
+struct sn_list_entry
+{
+    n2n_list_node_t     list;
+    n2n_sock_t          sock;
+};
+
+typedef struct sn_list_entry sn_list_entry_t;
 
 
 
@@ -67,11 +78,12 @@ struct n2n_edge
     int                 daemon;                 /**< Non-zero if edge should detach and run in the background. */
     uint8_t             re_resolve_supernode_ip;
 
-    n2n_sock_t          supernode;
+    n2n_sock_t *        supernode;
 
     size_t              sn_idx;                 /**< Currently active supernode. */
     size_t              sn_num;                 /**< Number of supernode addresses defined. */
-    n2n_sock_t          supernodes[N2N_EDGE_NUM_SUPERNODES];//TODO
+    //n2n_sock_t          supernodes[N2N_EDGE_NUM_SUPERNODES];//TODO
+    n2n_list_head_t     supernodes;
 
     int                 sn_wait;                /**< Whether we are waiting for a supernode response. */
 
@@ -108,15 +120,13 @@ struct n2n_edge
     size_t              rx_sup;
 
 #ifdef N2N_MULTIPLE_SUPERNODES
-    uint8_t             snm_discovery_state;
-    int                 snm_sock;
-    sn_list_t           supernodes;
-    struct sn_info      reg_sn;
+    n2n_snm_state_t     snm_state;
+    n2n_list_head_t     queried_supernodes;
+    char                snm_filename[N2N_PATHNAME_MAXLEN];
 #endif
 };
 
-//struct n2n_edge; /* defined in edge.c */
-typedef struct n2n_edge         n2n_edge_t;
+typedef struct n2n_edge n2n_edge_t;
 
 
 
