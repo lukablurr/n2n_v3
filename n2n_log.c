@@ -20,7 +20,7 @@ int syslog_opened = 0;
 #define N2N_TRACE_DATESIZE 32
 
 
-int traceLevel = N2N_LOG_DEBUG;//TODO N2N_LOG_NORMAL;
+int traceLevel = N2N_LOG_NORMAL;
 
 
 
