@@ -37,14 +37,14 @@ int is_empty_mac(const uint8_t *mac)
     return (0 == memcmp(mac, empty_addr, ETH_ADDR_LEN));
 }
 
-
 int is_broadcast_mac(const uint8_t *mac)
 {
     return (0 == memcmp(mac, broadcast_addr, ETH_ADDR_LEN));
 }
 
-/** Destination 01:00:5E:00:00:00 - 01:00:5E:7F:FF:FF is
- *  multicast ethernet [RFC1112].
+/**
+ * MAC in range 01:00:5E:00:00:00 - 01:00:5E:7F:FF:FF is
+ * IPv4 multicast ethernet address [RFC1112].
  */
 int is_multicast_mac(const uint8_t *mac)
 {
@@ -52,15 +52,14 @@ int is_multicast_mac(const uint8_t *mac)
             (0 == (0x80 & mac[3])));
 }
 
-
-/** Destination MAC 33:33:0:00:00:00 - 33:33:FF:FF:FF:FF is
- *  reserved for IPv6 neighbour discovery [RFC2464].
+/**
+ * Destination MAC 33:33:0:00:00:00 - 33:33:FF:FF:FF:FF is
+ * reserved for IPv6 neighbour discovery [RFC2464].
  */
 int is_ipv6_multicast_mac(const uint8_t *mac)
 {
     return (0 == memcmp(mac, ipv6_multicast_addr, 2));
 }
-
 
 uint8_t is_multi_broadcast_mac(const uint8_t *mac)
 {
