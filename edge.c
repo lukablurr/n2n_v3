@@ -140,7 +140,6 @@ static int edge_init(n2n_edge_t *eee)
     list_head_init(&eee->supernodes);
 
 #ifdef N2N_MULTIPLE_SUPERNODES
-    eee->snm_state = N2N_SNM_STATE_DISCOVERY;
     list_head_init(&eee->queried_supernodes);
 #endif
 
@@ -507,6 +506,7 @@ static void query_supernodes(n2n_edge_t *eee, time_t now)
     {
         send_query(eee, &qi->sock);
     }
+    eee->snm_state = N2N_SNM_STATE_DISCOVERY;
 }
 
 
@@ -862,7 +862,7 @@ static int find_peer_destination(n2n_edge_t *eee,
 
     if (0 == retval)
     {
-        memcpy(destination, &(eee->supernode), sizeof(n2n_sock_t));
+        memcpy(destination, eee->supernode, sizeof(n2n_sock_t));
     }
 
     traceDebug("find_peer_destination (%s) -> [%s]",
@@ -1099,8 +1099,7 @@ static void readFromTAPSocket(n2n_edge_t *eee)
 
     if (eee->drop_multicast &&
         (is_ipv6_multicast_mac(dst_mac) ||
-         is_broadcast_mac(dst_mac)/* ||
-         is_ethMulticast(eth_pkt, len)*/))
+         is_multicast_mac(dst_mac)))
     {
         traceDebug("Dropping multicast");
     }
@@ -1573,7 +1572,7 @@ static int edge_start(n2n_edge_t *eee, boot_helper_t *bh)
 
 
     /* Open TAP device */
-#if 0
+#if 1
 
 #ifndef WIN32
     /* If running suid root then we need to setuid before using the force. */
@@ -1717,7 +1716,7 @@ static int run_loop(n2n_edge_t *eee)
     FD_SET(eee->udp_sock, &proto_socket_mask);
     FD_SET(eee->udp_mgmt_sock, &proto_socket_mask);
     max_sock = max( eee->udp_sock, eee->udp_mgmt_sock );
-#ifndef WIN32
+#if !defined(WIN32) && !defined(N2N_MULTIPLE_SUPERNODES)
     FD_SET(eee->device.fd, &proto_socket_mask);
     max_sock = max( max_sock, eee->device.fd );
 #endif
@@ -1791,6 +1790,14 @@ static int run_loop(n2n_edge_t *eee)
 #ifdef N2N_MULTIPLE_SUPERNODES
         /* TODO comment */
         reg_sup_callbacks[eee->snm_state](eee, now);
+
+        //TODO
+        if (eee->snm_state == n2n_snm_ready && !FD_ISSET(eee->device.fd, &proto_socket_mask))
+        {
+            FD_SET(eee->device.fd, &proto_socket_mask);
+            max_sock = max( max_sock, eee->device.fd );
+        }
+
 #else
         update_supernode_reg(eee, now);
 #endif
