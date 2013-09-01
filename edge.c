@@ -878,6 +878,8 @@ static int find_peer_destination(n2n_edge_t *eee,
  *
  */
 
+/* Read from TAP device */
+
 /**
  * Send an encapsulated Ethernet PACKET to a destination edge or broadcast MAC
  * address.
@@ -998,6 +1000,46 @@ static void send_packet2net(n2n_edge_t *eee, uint8_t *tap_pkt, size_t len)
 
 
 /**
+ * Read a single packet from the TAP interface, process it and write out the
+ * corresponding packet to the cooked socket.
+ */
+static void readFromTAPSocket(n2n_edge_t *eee)
+{
+    /* tun -> remote */
+    uint8_t    eth_pkt[N2N_PKT_BUF_SIZE];
+    ssize_t    eth_len;
+
+    const uint8_t *dst_mac = eth_pkt;
+    macstr_t mac_buf;
+
+    eth_len = tuntap_read(&eee->device, eth_pkt, N2N_PKT_BUF_SIZE);
+
+    if ((eth_len <= 0) || (eth_len > N2N_PKT_BUF_SIZE))
+    {
+        traceWarning("tuntap_read()=%d [%d/%s]",
+                     (signed int) eth_len, errno, strerror(errno));
+        return;
+    }
+
+    traceInfo("### Rx TAP packet (%4d) for %s",
+              (signed int) eth_len, mac2str(mac_buf, dst_mac));
+
+    if (eee->drop_multicast &&
+        (is_ipv6_multicast_mac(dst_mac) ||
+         is_ipv4_multicast_mac(dst_mac)))
+    {
+        traceDebug("Dropping multicast");
+    }
+    else
+    {
+        send_packet2net(eee, eth_pkt, eth_len);
+    }
+}
+
+
+/* Write to TAP device */
+
+/**
  * A PACKET has arrived containing an encapsulated Ethernet datagram - usually
  * encrypted.
  */
@@ -1069,44 +1111,6 @@ static int handle_PACKET(n2n_edge_t *eee,
     }
 
     return retval;
-}
-
-
-/**
- * Read a single packet from the TAP interface, process it and write out the
- * corresponding packet to the cooked socket.
- */
-static void readFromTAPSocket(n2n_edge_t *eee)
-{
-    /* tun -> remote */
-    uint8_t    eth_pkt[N2N_PKT_BUF_SIZE];
-    ssize_t    eth_len;
-
-    const uint8_t *dst_mac = eth_pkt;
-    macstr_t mac_buf;
-
-    eth_len = tuntap_read(&eee->device, eth_pkt, N2N_PKT_BUF_SIZE);
-
-    if ((eth_len <= 0) || (eth_len > N2N_PKT_BUF_SIZE))
-    {
-        traceWarning("tuntap_read()=%d [%d/%s]",
-                     (signed int) eth_len, errno, strerror(errno));
-        return;
-    }
-
-    traceInfo("### Rx TAP packet (%4d) for %s",
-              (signed int) eth_len, mac2str(mac_buf, dst_mac));
-
-    if (eee->drop_multicast &&
-        (is_ipv6_multicast_mac(dst_mac) ||
-         is_ipv4_multicast_mac(dst_mac)))
-    {
-        traceDebug("Dropping multicast");
-    }
-    else
-    {
-        send_packet2net(eee, eth_pkt, eth_len);
-    }
 }
 
 
