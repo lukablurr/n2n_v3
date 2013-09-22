@@ -16,21 +16,21 @@
  */
 
 #include "n2n.h"
+#include "n2n_log.h"
+#include "tuntap.h"
 
 #ifdef _DARWIN_
-
-void tun_close(tuntap_dev *device);
 
 /* ********************************** */
 
 #define N2N_OSX_TAPDEVICE_SIZE 32
-int tuntap_open(tuntap_dev *device /* ignored */, 
-                char *dev, 
-                const char *address_mode, /* static or dhcp */
+int tuntap_open(tuntap_dev_t *device , ip_mode_t ip_mode)
+                /*char *dev,
+                const char *address_mode, // static or dhcp
                 char *device_ip, 
                 char *device_mask,
                 const char *device_mac,
-                int mtu)
+                int mtu)*/
 {
     int i;
     char tap_device[N2N_OSX_TAPDEVICE_SIZE];
@@ -55,26 +55,31 @@ int tuntap_open(tuntap_dev *device /* ignored */,
     else
     {
         char buf[256];
+        ipstr_t ipstr, maskstr;
         FILE *fd;
 
-        device->ip_addr = inet_addr(device_ip);
+        //TODO remove device->ip_addr = inet_addr(device_ip);
 
-        if (device_mac && device_mac[0] != '\0')
+        if ( !is_empty_mac(device->mac_addr) )
         {
             /* FIXME - This is not tested. Might be wrong syntax for OS X */
 
             /* Set the hw address before bringing the if up. */
+            macstr_t macstr;
             snprintf(buf, sizeof(buf), "ifconfig tap%d ether %s",
-                     i, device_mac);
+                     i, mac2str(macstr, device->mac_addr));
             system(buf);
         }
 
+        ipv4_to_str(ipstr, sizeof(ipstr_t), (const uint8_t *) &device->ip_addr);
+        ipv4_to_str(maskstr, sizeof(ipstr_t), (const uint8_t *) &device->device_mask);
+
         snprintf(buf, sizeof(buf), "ifconfig tap%d %s netmask %s mtu %d up",
-                 i, device_ip, device_mask, mtu);
+                 i, ipstr, maskstr, device->mtu);
         system(buf);
 
         traceNormal("Interface tap%d up and running (%s/%s)",
-                   i, device_ip, device_mask);
+                    i, ipstr, maskstr);
 
         /* Read MAC address */
 
@@ -84,7 +89,7 @@ int tuntap_open(tuntap_dev *device /* ignored */,
         fd = popen(buf, "r");
         if (fd < 0)
         {
-            tun_close(device);
+            tuntap_close(device);
             return (-1);
         }
         else
@@ -101,7 +106,7 @@ int tuntap_open(tuntap_dev *device /* ignored */,
                 exit(0);
             }
 
-            traceNormal("Interface tap%d [MTU %d] mac %s", i, mtu, buf);
+            traceNormal("Interface tap%d [MTU %d] mac %s", i, device->mtu, buf);
             if (sscanf(buf, "%02x:%02x:%02x:%02x:%02x:%02x", &a, &b, &c, &d, &e, &f) == 6)
             {
                 device->mac_addr[0] = a, device->mac_addr[1] = b;
@@ -117,28 +122,28 @@ int tuntap_open(tuntap_dev *device /* ignored */,
 
 /* ********************************** */
 
-int tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len)
+int tuntap_read(tuntap_dev_t *device, unsigned char *buf, int len)
 {
-    return (read(tuntap->fd, buf, len));
+    return (read(device->fd, buf, len));
 }
 
 /* ********************************** */
 
-int tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len)
+int tuntap_write(tuntap_dev_t *device, unsigned char *buf, int len)
 {
-    return (write(tuntap->fd, buf, len));
+    return (write(device->fd, buf, len));
 }
 
 /* ********************************** */
 
-void tuntap_close(struct tuntap_dev *tuntap)
+void tuntap_close(tuntap_dev_t *device)
 {
-    close(tuntap->fd);
+    close(device->fd);
 }
 
 /* Fill out the ip_addr value from the interface. Called to pick up dynamic
  * address changes. */
-void tuntap_get_address(struct tuntap_dev *tuntap)
+void tuntap_get_address(tuntap_dev_t *device)
 {
 }
 
