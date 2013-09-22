@@ -94,7 +94,7 @@ struct n2n_edge
     int                 udp_sock;
     int                 udp_mgmt_sock;          /**< socket for status info. */
 
-    tuntap_dev          device;                 /**< All about the TUNTAP device */
+    tuntap_dev_t        device;                 /**< All about the TUNTAP device */
     ip_mode_t           ip_mode;                /**< Interface IP address allocation mode (eg. static, DHCP). */
     int                 allow_routing;          /**< Accept packet no to interface address. */
     int                 drop_multicast;         /**< Multicast ethernet addresses. */

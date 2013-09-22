@@ -461,9 +461,6 @@ static void update_supernode_reg(n2n_edge_t *eee, time_t nowTime)
     eee->last_register_req = nowTime;
 }
 
-
-#ifdef N2N_MULTIPLE_SUPERNODES
-
 static int add_supernode(n2n_edge_t *eee, n2n_sock_t *sock)
 {
     sn_list_entry_t *sn = malloc(sizeof(sn_list_entry_t));
@@ -478,6 +475,9 @@ static int add_supernode(n2n_edge_t *eee, n2n_sock_t *sock)
     ++eee->sn_num;
     return 0;
 }
+
+
+#ifdef N2N_MULTIPLE_SUPERNODES
 
 
 static void send_query(n2n_edge_t *eee, const n2n_sock_t *dst)
