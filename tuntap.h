@@ -42,7 +42,7 @@ typedef struct tuntap_dev
     uint32_t        device_mask;
     uint16_t        mtu;
     char            dev_name[N2N_IFNAMSIZ];
-} tuntap_dev;
+} tuntap_dev_t;
 
 #else
 typedef struct tuntap_dev
@@ -56,7 +56,7 @@ typedef struct tuntap_dev
     uint32_t        ip_addr;
     uint32_t        device_mask;
     unsigned int    mtu;
-} tuntap_dev;
+} tuntap_dev_t;
 
 #endif /* #ifndef WIN32 */
 
@@ -64,15 +64,15 @@ typedef struct tuntap_dev
 
 /*extern int  tuntap_open(tuntap_dev *device, char *dev, const char *address_mode, char *device_ip,
                         char *device_mask, const char *device_mac, int mtu);*/
-extern int  tuntap_open(tuntap_dev *device, ip_mode_t ip_mode);
+extern int  tuntap_open(tuntap_dev_t *device, ip_mode_t ip_mode);
 
-extern int  tuntap_read(tuntap_dev *device, unsigned char *buf, int len);
+extern int  tuntap_read(tuntap_dev_t *device, unsigned char *buf, int len);
 
-extern int  tuntap_write(tuntap_dev *device, unsigned char *buf, int len);
+extern int  tuntap_write(tuntap_dev_t *device, unsigned char *buf, int len);
 
-extern void tuntap_close(tuntap_dev *device);
+extern void tuntap_close(tuntap_dev_t *device);
 
-extern void tuntap_get_address(tuntap_dev *device);
+extern void tuntap_get_address(tuntap_dev_t *device);
 
 
 

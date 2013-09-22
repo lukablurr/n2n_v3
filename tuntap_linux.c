@@ -65,7 +65,7 @@ static void read_mac(char *ifname, n2n_mac_t mac_addr)
  *  @return - negative value on error
  *          - non-negative file-descriptor on success
  */
-int tuntap_open(tuntap_dev *device, ip_mode_t ip_mode)
+int tuntap_open(tuntap_dev_t *device, ip_mode_t ip_mode)
                 //char *dev, /* user-definable interface name, eg. edge0 */
                 //const char *address_mode, /* static or dhcp */
                 //char *device_ip,
@@ -142,24 +142,24 @@ int tuntap_open(tuntap_dev *device, ip_mode_t ip_mode)
     return (device->fd);
 }
 
-int tuntap_read(tuntap_dev *device, unsigned char *buf, int len)
+int tuntap_read(tuntap_dev_t *device, unsigned char *buf, int len)
 {
     return (read(device->fd, buf, len));
 }
 
-int tuntap_write(tuntap_dev *device, unsigned char *buf, int len)
+int tuntap_write(tuntap_dev_t *device, unsigned char *buf, int len)
 {
     return (write(device->fd, buf, len));
 }
 
-void tuntap_close(tuntap_dev *device)
+void tuntap_close(tuntap_dev_t *device)
 {
     close(device->fd);
 }
 
 /* Fill out the ip_addr value from the interface. Called to pick up dynamic
  * address changes. */
-void tuntap_get_address(tuntap_dev *device)
+void tuntap_get_address(tuntap_dev_t *device)
 {
     FILE *fp = NULL;
     ssize_t nread = 0;
